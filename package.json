@@ -1,0 +1,57 @@
+{
+  "name": "sunorhc",
+  "version": "0.1.0",
+  "description": "Library for JavaScript to handle the datetime with the Epoch time conversion method starting from the CE of the Gregorian calendar",
+  "main": "index.js",
+  "scripts": {
+    "watch:babel": "babel src/index.js -w -o dist/sunorhc.js --source-maps inline",
+    "build:babel": "babel --compact=true src/index.js -o dist/sunorhc.min.js",
+    "test": "jest",
+    "lint": "eslint {src,test}/**/*.js",
+    "dev": "npm run lint && npm run watch",
+    "prod": "npm run lint && npm run build",
+    "serve": "webpack serve",
+    "watch": "webpack --watch",
+    "build": "webpack --env production"
+  },
+  "private": false,
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ka215/sunorhc.git"
+  },
+  "keywords": [
+    "sunorhc",
+    "datetime",
+    "UTC",
+    "Gregorian calendar",
+    "Calendar era",
+    "CE epoch",
+    "library"
+  ],
+  "author": "ka215 <ka2@ka2.org>",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/ka215/sunorhc/issues"
+  },
+  "homepage": "https://ka2.org/sunorhc",
+  "dependencies": {
+    "core-js": "^3.15.2"
+  },
+  "devDependencies": {
+    "@babel/cli": "^7.14.5",
+    "@babel/core": "^7.14.6",
+    "@babel/preset-env": "^7.14.7",
+    "babel-jest": "^26.6.3",
+    "babel-loader": "^8.2.2",
+    "cross-env": "^7.0.3",
+    "eslint": "^7.29.0",
+    "eslint-webpack-plugin": "^2.5.4",
+    "glob": "^7.1.7",
+    "jest": "^26.6.3",
+    "jest-html-reporter": "^3.4.1",
+    "proposal-temporal": "^0.8.0",
+    "webpack": "^5.41.1",
+    "webpack-cli": "^4.7.2",
+    "webpack-dev-server": "^3.11.2"
+  }
+}

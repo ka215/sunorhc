@@ -1,0 +1,22 @@
+{
+    "env": {
+        "browser": true,
+        "node": true,
+        "jest": true
+    },
+    "extends": [
+        "eslint:recommended"
+    ],
+    "globals": {
+        "process": "readonly",
+        "Set": "readonly"
+    },
+    "parserOptions": {
+        "ecmaVersion": 6,
+        "sourceType": "module"
+    },
+    "rules": {
+        "no-console": "warn",
+        "no-undef": "warn"
+    }
+}
