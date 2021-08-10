@@ -1,4 +1,5 @@
 const ESLintPlugin = require('eslint-webpack-plugin')
+const CompressionPlugin = require('compression-webpack-plugin')
 
 module.exports = (env) => {
     const isProd = env.production || false
@@ -45,7 +46,16 @@ module.exports = (env) => {
             ],
         },
         target: ['web', 'es5'],
-        plugins: (isProd ? []: [ new ESLintPlugin() ]),
+        plugins: isProd
+                 ? [
+                     new CompressionPlugin({
+                         test: /\.js$/,
+                         compressionOptions: {
+                             level: 9
+                         }
+                     })
+                 ]
+                 : [ new ESLintPlugin() ],
         devServer: {
             contentBase: 'tests',
             hot: false,

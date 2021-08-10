@@ -9,7 +9,7 @@
     <title>Sunorhc %version%</title>
     <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:100,300,400,500,700,900">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@mdi/font@latest/css/materialdesignicons.min.css">
-    <link rel="stylesheet" href="./tester.css">
+    <link rel="stylesheet" href="./tester.css?v020">
     <script data-ad-client="ca-pub-8602791446931111" async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js"></script>
   </head>
   <body>
@@ -22,6 +22,7 @@
       <p id="lead">
         This is a test page to see how Sunorhc works in a real browser.<br>
         Please enter the payloads that are arguments to instantiate the Sunorhc object.<br>
+        You can also refer to <a href="./test-report.html">the results of unit tests</a> by Jest.<br>
       </p>
       <form id="factory">
         <div class="env-row">
@@ -30,15 +31,18 @@
           <div class="chips">TimeZone Offset:<code id="tz-offset" class="unknown-text">unknown</code></div>
         </div>
         <div class="entry-row1">
-          <div class="code" style="width: 240px;">var instance = new Sunorhc(</div>
+          <div class="code" style="width: 180px;">var <span id="instance-name"></span> = new Sunorhc(</div>
           <textarea id="payloads" name="payloads" rows="1" placeholder='Fill here the payloads e.g. `now, "local"`'></textarea>
           <div class="code" style="width: 24px;">);</div>
         </div>
         <div class="entry-row2">
-          <button type="button" id="instantiate" class="btn btn-primary" disabled><i class="mdi mdi-send-circle-outline"></i> Instantiate</button>
+          <button type="button" id="instantiate" class="btn btn-primary"><i class="mdi mdi-send-circle-outline"></i> Instantiate</button>
           <button type="reset" id="clear-payloads" class="btn btn-secondary"><i class="mdi mdi-cancel"></i> Crear</button>
+          <label for="format-test">
+            <input type="checkbox" id="format-test" name="format-test" value="1">Testing the <code>format()</code> method
+          </label>
         </div>
-        <p class="helper-text">
+        <p class="helper-text" hidden>
           <i class="mdi mdi-information-variant"></i>
           If you want to emulate instantiation without arguments, specify a payload that actually is not valid, such as <code>null</code>.
         </p>
@@ -60,7 +64,7 @@
         2021 <i class="mdi mdi-copyright"></i> Monaural Sound ka2.org, Powered by MAGIC METHODS
       </footer>
     </main>
-    <script src="../dist/sunorhc.min.js?v010a"></script>
-    <script src="./tester.js?v010a"></script>
+    <script src="../dist/sunorhc.min.js?v020"></script>
+    <script src="./tester.js?v020"></script>
   </body>
 </html>

@@ -4,7 +4,7 @@ export default {
      *              from the CE of the Gregorian calendar.
      * @package sunorhc
      */
-    version: '0.1.0',
+    version: '0.2.0',
 
     /**
      * Default TimeZone
@@ -63,7 +63,7 @@ export default {
         month:   { month:   'numeric' },
         day:     { day:     'numeric' },
         weekday: { weekday: 'long' },
-        hour:    { hour:    'numeric'/* hour12: false, */ },
+        hour:    { hour:    'numeric' },
         minute:  { minute:  '2-digit' },
         second:  { second:  '2-digit' },
         era:     { era:     'long' },

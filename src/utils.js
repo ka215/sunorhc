@@ -1,3 +1,11 @@
+const strInsert = (str, idx, val) => {
+    return str.slice(0, idx) + val + str.slice(idx)
+}
+
+const strRemove = (str, idx, len=1) => {
+    return str.slice(0, idx) + str.slice(idx + len)
+}
+
 const isObject = (one) => {
     return !!(one) && typeof one === 'object' && !Array.isArray(one)
 }
@@ -47,7 +55,7 @@ const mergeOptions = (defaults, settings) => {
                         }
                         break
                     case 'firstArgument':
-                        if (vType === 'string' && /^(epoch|year)$/i.test(setVal)) {
+                        if (vType === 'string' && /^(ce(|epoch)|timestamp|unix|year)$/i.test(setVal)) {
                             finalOpts[setKey] = setVal.toLowerCase()
                         }
                         break
@@ -87,6 +95,8 @@ const mergeOptions = (defaults, settings) => {
 }
 
 export default {
+    strInsert,
+    strRemove,
     isObject,
     hasKey,
     cloneObject,

@@ -1,6 +1,6 @@
 {
   "name": "sunorhc",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Library for JavaScript to handle the datetime with the Epoch time conversion method starting from the CE of the Gregorian calendar",
   "main": "index.js",
   "scripts": {
@@ -43,6 +43,7 @@
     "@babel/preset-env": "^7.14.7",
     "babel-jest": "^26.6.3",
     "babel-loader": "^8.2.2",
+    "compression-webpack-plugin": "^8.0.1",
     "cross-env": "^7.0.3",
     "eslint": "^7.29.0",
     "eslint-webpack-plugin": "^2.5.4",

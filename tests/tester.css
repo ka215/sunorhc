@@ -17,14 +17,17 @@ h1 { font-size: 2em; font-weight: 500; color: #263238; cursor: pointer; }
 h1:hover { color: #37474F; }
 hr { border-color: #ddd; border-width: 1px 0 0 0; width: calc(50% * 2); overflow-x: hidden; }
 .dotted { border-style: dotted; border-color: #717171; }
-.env-row { display: flex; flex-wrap: nowrap; justify-content: end; align-items: center; margin: 1rem; padding: 0; font-size: 1.3rem; }
+.env-row { display: flex; flex-wrap: nowrap; justify-content: start; align-items: center; margin: 1rem; padding: 0; font-size: 1.3rem; }
 .entry-row1 { display: flex; flex-wrap: nowrap; justify-content: center; align-items: center; margin: 1rem; padding: 1rem; border: 1px solid #ccc; border-radius: 4px; background-color: #f7f7f7; }
 .entry-row2 { display: flex; flex-wrap: nowrap; justify-content: start; align-items: center; margin: 1rem; padding: 1rem 0; }
 textarea { border: 1px solid #ddd; border-radius: 4px; background-color: rgba(255,255,255,0.8); margin: auto; margin-right: 0.5rem; padding: 5px; width: 100%; resize: vertical; transition: all 0.3s linear; }
 textarea::placeholder { color: #B0BEC5; }
 textarea:hover, textarea:active, textarea:focus { border-color: #EF5350; background-color: #ffffff; }
+label[for=format-test] { font-weight: 300; cursor: pointer; border: none; border-radius: 4px; outline: none; padding: 0 1rem; }
+label[for=format-test]:hover { background-color: #dcf0f0; color: #0794a7; }
+input[type=checkbox] { position: relative; margin: auto 0.5em auto 0; top: 2px; width: 1em; height: 1em; -moz-appearance: auto; -webkit-appearance: auto; }
 code, .code { font-family: monospace !important; font-size: 1.2rem; color: #777; }
-.btn { border: 1px solid #777; border-radius: 4px; margin: 0; margin-right: 1rem; padding: 4px 10px 4px 6px; font-weight: 300; }
+.btn { border: 1px solid #777; border-radius: 4px; margin: 0; margin-right: 1em; padding: 4px 10px 4px 6px; font-weight: 300; cursor: pointer; }
 .btn-primary { border-color: #00BCD4; background-color: #00BCD4; color: #ffffff; }
 .btn-primary:hover, .btn-primary:active, .btn-primary:focus { border-color: #00ACC1; background-color: #00ACC1; color: #ffffff; }
 .btn-secondary { border-color: #78909C; background-color: #ECEFF1; color: #607D8B; }
