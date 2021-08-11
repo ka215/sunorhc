@@ -8,7 +8,7 @@ const INSTANT_PROPS   = [
     "$WD", "$WDL", "$WDS", "$Y",
 ]
 const CE_EPOCH_UNIX = -62135596800000
-// UTC datetime based on the current local datetime. (: 現地時間をベースにした"UTC日時"
+// UTC datetime based on the current local datetime.
 // Same values are below:
 // - new Date(Date.UTC(NOW.getFullYear(), NOW.getMonth(), NOW.getDate(), NOW.getHours(), NOW.getMinutes() + NOW.getTimezoneOffset(), NOW.getSeconds(), NOW.getMilliseconds()))
 // - new Date(Date.UTC(NOW.getUTCFullYear(), NOW.getUTCMonth(), NOW.getUTCDate(), NOW.getUTCHours(), NOW.getUTCMinutes(), NOW.getUTCSeconds(), NOW.getUTCMilliseconds()))

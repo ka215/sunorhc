@@ -102,9 +102,9 @@ window.addEventListener('DOMContentLoaded', (event) => {
             _sc.push(`${instance}.toString: ${sunorhcObj.toString}`)
             _sc.push(`${instance}.toISOString: ${sunorhcObj.toISOString}`)
             if (!isFormatTest) {
-                _sc.push(`${instance}.getUTC().toISOString(): ${sunorhcObj.getUTC().toISOString()}`)
+                _sc.push(`${instance}.toUTCDate().toISOString(): ${sunorhcObj.toUTCDate().toISOString()}`)
             }
-            _tmp = JSON.stringify(sunorhcObj.instant, null, "<br>\t").replace(/\t\"/g, _idt).replaceAll(/\":/g, ': ').replace(/}$/, "<br>}")
+            _tmp = JSON.stringify(sunorhcObj.instant, null, "<br>\t").replace(/\t\"/g, _idt).replace(/\":/g, ': ').replace(/}$/, "<br>}")
             _sc.push(`${instance}.instant: ${_tmp}`)
             if (!isFormatTest) {
                 _tmp = JSON.stringify(sunorhcObj.config, null, "\t").replace(/}$/, "<br>}")
@@ -166,7 +166,7 @@ window.addEventListener('DOMContentLoaded', (event) => {
             _tmp     = null
         if (_inObj && _inObj.length > 0) {
             // Parse the string to an object
-            _tmp = _inObj[0].replaceAll(/\s*(\{|\})\s*/g, '$1').replaceAll(/\'/g, '"')
+            _tmp = _inObj[0].replace(/\s*(\{|\})\s*/g, '$1').replace(/\'/g, '"')
             _cfg = Function(`"use strict";return (${_tmp})`)()
             if (typeof _cfg !== 'object') {
                 _cfg = null
