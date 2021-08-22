@@ -1023,7 +1023,7 @@ describe('Methods test', () => {
         expect(s1.getLocaleDateElement('millisecond', locale2)).toBe(4)
         expect(s1.getLocaleDateElement('millisecond', 'zerofill', locale2)).toBe('004')
         expect(s1.getLocaleDateElement('era', {era: 'long'}, locale2)).toMatch(/^(4\s9,\s2021\sAnno\sDomini|2021-4-9\s?(.*))$/)
-        expect(s1.getLocaleDateElement('era', 'short', locale2)).toMatch(/^(4\s9,\s2021\sAnno\sDomini|2021-4-9\s?(.*))$/)
+        expect(s1.getLocaleDateElement('era', 'short', locale2)).toMatch(/^(4\s9,\s2021\sAD|2021-4-9\s?(.*))$/)
         expect(s1.getLocaleDateElement('era', 'narrow', locale2)).toMatch(/^(4\s9,\s2021\sAnno\sDomini|2021-4-9\s?(.*))$/)
         // locale3
         expect(s1.getLocaleDateElement('year', 'numeric', locale3)).toBe(2021)
@@ -1045,7 +1045,7 @@ describe('Methods test', () => {
         expect(s1.getLocaleDateElement('millisecond', locale3)).toBe(4)
         expect(s1.getLocaleDateElement('millisecond', 'zerofill', locale3)).toBe('004')
         expect(s1.getLocaleDateElement('era', {era: 'long'}, locale3)).toMatch(/^(4\s9,\s2021\sAnno\sDomini|2021-4-9\s?(.*))$/)
-        expect(s1.getLocaleDateElement('era', 'short', locale3)).toMatch(/^(4\s9,\s2021\sAnno\sDomini|2021-4-9\s?(.*))$/)
+        expect(s1.getLocaleDateElement('era', 'short', locale3)).toMatch(/^(4\s9,\s2021\sAD|2021-4-9\s?(.*))$/)
         expect(s1.getLocaleDateElement('era', 'narrow', locale3)).toMatch(/^(4\s9,\s2021\sAnno\sDomini|2021-4-9\s?(.*))$/)
     })
 
