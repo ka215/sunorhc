@@ -426,7 +426,7 @@ export default class Sunorhc {
                 if (/^(numeric|2-digit)$/.test(options.hour)) {
                     retval = parseInt(retval, 10)
                 } else {
-                    let _m = retval.match(/^(\d{2}):\d{2}:\d{2}(.*)$/)
+                    let _m = retval.toString().match(/^(\d{2}):\d{2}:\d{2}(.*)$/)
                     if (_m) {
                         retval = `${_m[1]}${_m[2]}`
                     }
