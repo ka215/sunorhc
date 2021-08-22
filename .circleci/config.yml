@@ -1,6 +1,4 @@
 version: 2.1
-orbs:
-  win: circleci/windows@2.3.0
 executors:
   node:
     docker:
@@ -29,7 +27,7 @@ jobs:
           command: yarn install
       - save_modules
   test:
-    executor: win/default
+    executor: node
     steps:
       - checkout
       - restore_modules

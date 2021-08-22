@@ -410,7 +410,9 @@ export default class Sunorhc {
             case 'hour':
                 retval = this._baseDate.toLocaleTimeString(locale, options)
                 if (utils.hasKey(options, 'hour12')) {
-                    retval = options.hour12 ? retval : (retval == 24 ? 0 : retval)
+                    if (options.hour12 === false && parseInt(retval, 10) == 24) {
+                        retval = 0
+                    }
                 } else if (utils.hasKey(options, 'hourCycle')) {
                     /* "hour12" takes precedence, so "hourCycle" is disabled.
                     switch (options.hourCycle) {

@@ -8,7 +8,7 @@
     "build:babel": "babel --compact=true src/index.js -o dist/sunorhc.min.js",
     "test": "jest --silent=true --verbose true",
     "test:debug": "jest --silent=false --verbose true",
-    "lint": "eslint {src,test}/**/*.js",
+    "lint": "eslint src/**/*.js",
     "dev": "npm run lint && npm run watch",
     "prod": "npm run lint && npm run build",
     "serve": "webpack serve",
@@ -51,7 +51,6 @@
     "glob": "^7.1.7",
     "jest": "^26.6.3",
     "jest-html-reporter": "^3.4.1",
-    "proposal-temporal": "^0.8.0",
     "webpack": "^5.41.1",
     "webpack-cli": "^4.7.2",
     "webpack-dev-server": "^3.11.2"
