@@ -1,7 +1,6 @@
 node_modules
 
 architecture.md
-yarn.lock
 *.log
 *.orig
 *.png
