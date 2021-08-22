@@ -1,12 +1,13 @@
 {
   "name": "sunorhc",
-  "version": "0.3.0",
+  "version": "1.0.0",
   "description": "Library for JavaScript to handle the datetime with the Epoch time conversion method starting from the CE of the Gregorian calendar",
   "main": "index.js",
   "scripts": {
     "watch:babel": "babel src/index.js -w -o dist/sunorhc.js --source-maps inline",
     "build:babel": "babel --compact=true src/index.js -o dist/sunorhc.min.js",
-    "test": "jest",
+    "test": "jest --silent=true --verbose true",
+    "test:debug": "jest --silent=false --verbose true",
     "lint": "eslint {src,test}/**/*.js",
     "dev": "npm run lint && npm run watch",
     "prod": "npm run lint && npm run build",

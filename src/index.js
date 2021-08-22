@@ -44,9 +44,7 @@ export default class Sunorhc {
         // Initialize plugin configuration
         this.config = utils.deepMerge({}, defaults)
         
-        //console.log('::constructor:', payloads)
         return this._init(payloads)
-        //return this
     }
 
     /**
@@ -58,8 +56,10 @@ export default class Sunorhc {
     _parse (payloads) {
         const keys = ['$y', '$m', '$d', '$h', '$mi', '$s', '$ms'],
               _now = new Date()// today
-        let _argsIsUTC = true
-        this.config.offset = _now.getTimezoneOffset() * 60000// an unit is milliseconds
+        let _argsIsUTC = true,
+            _fromLocalPayloads = true,
+            _isParseStr = false
+        //this.config.offset = _now.getTimezoneOffset() * 60000// Provisional definition (an unit is milliseconds)
         this.config.dateArgs = {
             $y:  _now.getUTCFullYear(),
             $m:  _now.getUTCMonth(),
@@ -69,7 +69,6 @@ export default class Sunorhc {
             $s:  _now.getUTCSeconds(),
             $ms: _now.getUTCMilliseconds(),
         }
-        //console.log('::_parse():', payloads)
         // parse payloads
         if (Array.isArray(payloads) && payloads.length > 0) {
             // If the constructor has more than one argument
@@ -96,6 +95,7 @@ export default class Sunorhc {
                         // When the first argument is a string as kind of the date
                         const d = _fa.match(REGEX_PARSE)
                         if (d) {
+                            // When the recommended datetime format
                             this.config.dateArgs = {
                                 $y:  d[1],
                                 $m:  typeof d[2] === 'undefined' ? 0 : d[2] - 1,
@@ -105,12 +105,12 @@ export default class Sunorhc {
                                 $s:  typeof d[6] === 'undefined' ? 0 : d[6],
                                 $ms: typeof d[7] === 'undefined' ? 0 : parseInt(d[7].substring(0, 3), 10),
                             }
-                            _argsIsUTC = false
+                            _fromLocalPayloads = !/Z$/i.test(d[0])
+                            _isParseStr = true
                             payloads.shift()
                         } else if (!_fa.match(REGEX_TZNAME)) {
                             // When an ambiguous string is given as the datetime
                             let _preDt = new Date(_fa)
-                            //console.log('String argument given!:', _fa, _preDt, this.isValid(_preDt))
                             if (this.isValid(_preDt)) {
                                 this.config.dateArgs = {
                                     $y:  _preDt.getUTCFullYear(),
@@ -121,6 +121,7 @@ export default class Sunorhc {
                                     $s:  _preDt.getUTCSeconds(),
                                     $ms: _preDt.getUTCMilliseconds(),
                                 }
+                                _isParseStr = true
                                 payloads.shift()
                             }
                         }
@@ -128,7 +129,6 @@ export default class Sunorhc {
                 }
             }
             let lastElm = payloads.splice(-1, 1)[0]
-            //console.log('!_:', lastElm, payloads, this.config.dateArgs)
             if (typeof lastElm === 'number') {
                 // If the trailing argument is a number, do nothing.
                 payloads.push(lastElm)
@@ -141,14 +141,17 @@ export default class Sunorhc {
                 } else if (/^(utc|local)$/i.test(lastElm)) {
                     // Set the timezone of "UTC" or "local"
                     this.config.timezone = /^utc$/i.test(lastElm) ? 'UTC' : 'local'
+                    _argsIsUTC = this.config.timezone === 'UTC'
                 } else {
                     // Set the "local" timezone with timezone name
-                    this.config.timezone = 'local'
                     if (lastElm.match(REGEX_TZNAME)) {
+                        this.config.timezone = 'local'
                         this.config.tzName = lastElm
                     } else {
-                        console.warn(`[Sunorhc] An invalid timezone name was given: "${lastElm}"`)
+                        this._logger(`An invalid timezone name was given: "${lastElm}"`, 2)
+                        this.config.timezone = 'UTC'
                     }
+                    _argsIsUTC = this.config.timezone === 'UTC'
                 }
             } else if (utils.isObject(lastElm)) {
                 // If the last argument is an object, it will override the Sunorhc configration.
@@ -166,10 +169,9 @@ export default class Sunorhc {
                 // If the last argument is an invalid value.
                 if (typeof lastElm !== 'undefined' && utils.hasKey(this.config, 'dateArgs')) {
                     delete this.config.dateArgs
-                    console.warn(`[Sunorhc] The argument contains an invalid value.`)
+                    this._logger('The argument contains an invalid value.', 2)
                 }
             }
-            //console.log('!!_:', payloads)
             if (payloads.length > 0) {
                 if (/^(timestamp|unix|ce(|epoch))$/i.test(this.config.firstArgument) && typeof payloads[0] === 'number') {
                     // When the first argument for constructor is interpreted as the elapsed times from the epoch time.
@@ -188,10 +190,10 @@ export default class Sunorhc {
                         $s:  _edt.getUTCSeconds(),
                         $ms: _edt.getUTCMilliseconds(),
                     }
+                    _argsIsUTC = this.config.timezone === 'UTC'
                 } else {
                     // When the first argument for constructor is interpreted as the numeric year (for defaults).
                     let _y = typeof payloads[0] === 'number' ? payloads[0] : parseInt(payloads[0].toString(), 10)
-                    //console.log('@-@:', _y)
                     if (!isNaN(_y)) {
                         this.config.dateArgs = {
                             $y:  _y,
@@ -203,31 +205,54 @@ export default class Sunorhc {
                             $ms: typeof payloads[6] === 'undefined' ? 0 : payloads[6],
                         }
                         _argsIsUTC = false
+                        _fromLocalPayloads = false
                     }
                 }
             }
         } else {
             // If the constructor has no arguments
-            //console.log('!!!_:', this.config.dateArgs)
         }
         if (!utils.hasKey(this.config, 'dateArgs')) {
             throw '[Sunorhc] Failed to set options for initializing object.'
         }
         // Set the primitive datetime as "_baseDate"
         let _utcDt   = new Date(Date.UTC(...keys.map(v => this.config.dateArgs[v]))),
-            _zonedDt = null
+            _zonedDt = new Date(...keys.map(v => this.config.dateArgs[v]))
         if (this.config.dateArgs.$y < 100) {
-            _utcDt = new Date(_utcDt.setUTCFullYear(this.config.dateArgs.$y))
+            _utcDt   = new Date(_utcDt.setUTCFullYear(this.config.dateArgs.$y))
+            _zonedDt = new Date(_zonedDt.setFullYear(this.config.dateArgs.$y))
         }
-        _zonedDt = _argsIsUTC ? new Date(_utcDt.getTime() - this.config.offset): new Date(_utcDt.getTime())
-        //console.log('!_:', this.config.dateArgs, _argsIsUTC, _utcDt, _zonedDt)
-        if (this.config.timezone === 'UTC') {
-            this._baseDate = this.isValid(_utcDt) ? _utcDt : INVALID_DATE
-            this.config.offset = 0
+        if (_isParseStr) {
+            if (_argsIsUTC) {
+                this.config.offset = 0
+                this.config.timezone = 'UTC'
+                this._baseDate = _utcDt
+            } else {
+                this.config.offset = _zonedDt.getTimezoneOffset() * 60000
+                this.config.timezone = 'local'
+                this._baseDate = new Date(_zonedDt.getTime() - this.config.offset)
+            }
         } else {
-            this._baseDate = this.isValid(_zonedDt) ? _zonedDt : INVALID_DATE
+            if (!_argsIsUTC) {
+                this.config.offset = _zonedDt.getTimezoneOffset() * 60000
+                _zonedDt = _fromLocalPayloads
+                    ? new Date(_utcDt.getTime() - this.config.offset)
+                    : new Date(_utcDt.getTime())
+            } else {
+                this.config.offset = 0
+                _zonedDt = new Date(_utcDt.getTime())
+            }
+            if (this.config.timezone === 'UTC') {
+                this._baseDate = this.isValid(_utcDt) ? _utcDt : INVALID_DATE
+                this.config.offset = 0
+            } else {
+                this._baseDate = this.isValid(_zonedDt) ? _zonedDt : INVALID_DATE
+                if (!this.hasDST() && this.config.offset == 0) {
+                    this._baseDate = this.isValid(_utcDt) ? _utcDt : INVALID_DATE
+                    this.config.timezone = 'UTC'
+                }
+            }
         }
-        //console.log('_baseDate:', this._baseDate)
     }
 
     /**
@@ -241,18 +266,19 @@ export default class Sunorhc {
 
         const _locale = 'en-US'
         this._i = this.isValid() ? Object.assign({}, {
-            $Y:    parseInt(this.getLocaleDateElement('year', 'numeric', _locale), 10),
-            $MON:  parseInt(this.getLocaleDateElement('month', 'numeric', _locale), 10),
-            $MONL: this.getLocaleDateElement('month', 'long', _locale),
-            $MONS: this.getLocaleDateElement('month', 'short', _locale),
+            $Y:    parseInt(this.getLDE('year', 'numeric', _locale), 10),
+            $MON:  parseInt(this.getLDE('month', 'numeric', _locale), 10),
+            $MONL: this.getLDE('month', 'long', _locale),
+            $MONS: this.getLDE('month', 'short', _locale),
             $W:    this.getWeekOfYear(),
-            $D:    parseInt(this.getLocaleDateElement('day', 'numeric', _locale), 10),
+            $D:    parseInt(this.getLDE('day', 'numeric', _locale), 10),
             $WD:   this.getWeekdayIndex('iso8601'),
-            $WDL:  this.getLocaleDateElement('weekday', 'long', _locale),
-            $WDS:  this.getLocaleDateElement('weekday', 'short', _locale),
-            $H:    parseInt(this.getLocaleDateElement('hour', {hour12: false, hour: 'numeric'}, _locale), 10),
-            $M:    parseInt(this.getLocaleDateElement('minute', 'numeric', _locale), 10),
-            $S:    parseInt(this.getLocaleDateElement('second', 'numeric', _locale), 10),
+            $WDL:  this.getLDE('weekday', 'long', _locale),
+            $WDS:  this.getLDE('weekday', 'short', _locale),
+            $O:    this.getCumulativeDays(),
+            $H:    parseInt(this.getLDE('hour', {hour12: false, hour: 'numeric'}, _locale), 10),
+            $M:    parseInt(this.getLDE('minute', 'numeric', _locale), 10),
+            $S:    parseInt(this.getLDE('second', 'numeric', _locale), 10),
             $MS:   this.config.timezone === 'UTC' ? this._baseDate.getUTCMilliseconds() : this._baseDate.getMilliseconds(),
             $TZ:   this.config.timezone || 'UTC',
             $TZO:  this.config.timezone === 'UTC' ? 0 : this.getTZOffset(),
@@ -260,15 +286,32 @@ export default class Sunorhc {
             $TZOF: this.getTZOffset('full'),     
             $U:    this.getUnixTime('s'),
             $UMS:  this.getUnixTime('ms'),
-            $E:    this.getLocaleDateElement('era', 'long', _locale),
+            $E:    this.getLDE('era', 'long', _locale),
             $CE:   this.getCEEpoch('s'),
             $CEMS: this.getCEEpoch('ms'),
+            $DST:  this.isDST(),
+            $DSTO: this.getDSTOffset(),
         }) : null
         //delete this.config.dateArgs
 
         Object.freeze(this.config)
+        Object.freeze(this._cache)
 
         return this
+    }
+
+    /**
+     * Logger
+     *
+     * @private
+     * @param {string} msg - output message
+     * @param {?number} type [type=0] - output type as console method
+     */
+     _logger(msg, type=0) {
+        if (this.config.verbose) {
+            const types = [ 'log', 'info', 'warn', 'error', 'debug' ]
+            console[types[type]](`[Sunorhc] ${msg}`)
+        }
     }
 
     // Public methods
@@ -281,12 +324,14 @@ export default class Sunorhc {
      */
     getUnixTime(unit='ms') {
         if (!unit) {
-            unit = /^sec(|onds)?$/i.test(this.config.epochUnit) ? 's' : 'ms'
+            unit = /^sec(|onds?)$/i.test(this.config.epochUnit) ? 's' : 'ms'
         }
-        let _time = this._baseDate.getTime(),
-            _tzos = this.getTZOffset()
-        if (this.config.timezone !== 'UTC' && _tzos != 0) {
-            _time = _time + _tzos
+        let _time = 0
+        if (this.config.timezone === 'UTC') {
+            _time = this._baseDate.getTime()
+        } else {
+            let _da = this.config.dateArgs
+            _time = new Date(_da.$y, _da.$m, _da.$d, _da.$h, _da.$mi, _da.$s, _da.$ms).getTime()
         }
         return Math.floor(_time / (unit === 's' ? 1000 : 1))
     }
@@ -299,17 +344,10 @@ export default class Sunorhc {
      */
     getCEEpoch(unit='ms') {
         if (!unit) {
-            unit = /^sec(|onds)?$/i.test(this.config.epochUnit) ? 's' : 'ms'
+            unit = /^sec(|onds?)$/i.test(this.config.epochUnit) ? 's' : 'ms'
         }
-        /*
-        let _dt   = this._baseDate,
-            _ceDt = new Date(Date.UTC(1, 0, 1, 0, 0, 0, 0)),
-            _ceEpoch = _ceDt.setUTCFullYear(1)
-        console.log('getCEEpoch:', _ceEpoch, CE_EPOCH_UNIX)
-        return Math.floor((_dt.getTime() + Math.abs(_ceEpoch)) / (unit === 's' ? 1000 : 1))
-        */
-        return Math.floor((this._baseDate.getTime() + Math.abs(CE_EPOCH_UNIX)) / (unit === 's' ? 1000 : 1))
-
+        let _ut = this.getUnixTime()
+        return Math.floor((_ut + Math.abs(CE_EPOCH_UNIX)) / (unit === 's' ? 1000 : 1))
     }
 
     /**
@@ -331,7 +369,6 @@ export default class Sunorhc {
                 { locales: locale }
             )
         if (!format) {
-            //if (Object.prototype.hasOwnProperty.call(this.config.localeFormats, elementName)) {
             if (utils.hasKey(this.config.localeFormats, elementName)) {
                 options = utils.deepMerge(options, 
                     utils.isObject(this.config.localeFormats[elementName]) 
@@ -344,8 +381,10 @@ export default class Sunorhc {
         } else if (utils.isObject(format)) {
             options = utils.deepMerge(options, format)
         }
-        if (timezone !== 'local') {
+        if (REGEX_TZNAME.test(timezone)) {
             options.timeZone = timezone
+        } else {
+            //
         }
         let _tmp, _y, retval
         switch (elementName) {
@@ -370,12 +409,10 @@ export default class Sunorhc {
                 break
             case 'hour':
                 retval = this._baseDate.toLocaleTimeString(locale, options)
-                //console.log(options)
                 if (utils.hasKey(options, 'hour12')) {
                     retval = options.hour12 ? retval : (retval == 24 ? 0 : retval)
                 } else if (utils.hasKey(options, 'hourCycle')) {
-                    // "hour12" takes precedence, so "hourCycle" is disabled.
-                    /*
+                    /* "hour12" takes precedence, so "hourCycle" is disabled.
                     switch (options.hourCycle) {
                         case 'h11':
                         case 'h12':
@@ -416,7 +453,6 @@ export default class Sunorhc {
                    : retval
         } else if (elementName === 'year' && options[elementName] === '4-digit') {
             _tmp = parseInt(retval, 10)
-            //console.log('year.4-digit:', retval, _tmp)
             return Math.abs(_tmp).toString().length < 4
                    ? (_tmp < 0 ? '-': '') + Math.abs(_tmp).toString().padStart(4, '0')
                    : retval
@@ -433,7 +469,7 @@ export default class Sunorhc {
      * @public
      */
      getLDE(elementName, format=null, locale=null, timezone='UTC') {
-        return this.modify(elementName, format, locale, timezone)
+        return this.getLocaleDateElement(elementName, format, locale, timezone)
     }
 
     /**
@@ -452,49 +488,53 @@ export default class Sunorhc {
             replacer = locale
             locale = this.config.locale
         }
+        // Alphabet reserved as matcher identifier:
+        //     "B","C","D",    "F","G","H","I",    "L","M","N",    "S",    "U","V","W","Y","Z",
+        // "a","b","c","d","e","f","g","h","i","j","l","m","n","r","s","t","u","v","w","y","z" 
         const matcher = {
             // Year
-            Y: this._i.$Y,// this.getLocaleDateElement('year', 'numeric', locale),
-            y: this.getLocaleDateElement('year', '2-digit', locale),
-            f: this.getLocaleDateElement('year', '4-digit', locale),
+            Y: this._i.$Y,// = this.getLDE('year', 'numeric', locale)
+            y: this.getLDE('year', '2-digit', locale),
+            f: this.getLDE('year', '4-digit', locale),
             L: this.getDaysInYear() == 366 ? 1 : 0,
             // Month
-            F: this.getLocaleDateElement('month', 'long', locale),
-            m: this._i.$MON.toString().padStart(2, '0'),// this.getLocaleDateElement('month', '2-digit', locale),
-            M: this.getLocaleDateElement('month', 'short', locale),
-            n: this._i.$MON,// this.getLocaleDateElement('month', 'numeric', locale),
+            F: this.getLDE('month', 'long', locale),
+            m: this._i.$MON.toString().padStart(2, '0'),// = this.getLDE('month', '2-digit', locale)
+            M: this.getLDE('month', 'short', locale),
+            n: this._i.$MON,// = this.getLDE('month', 'numeric', locale)
             t: this.getDaysInMonth(),
             // Week
-            W: this.getWeekOfYear(),
+            W: this._i.$W,// = this.getWeekOfYear()
             // Day
-            d: this._i.$D.toString().padStart(2, '0'),// this.getLocaleDateElement('day', '2-digit', locale),
-            j: this._i.$D,// this.getLocaleDateElement('day', 'numeric', locale),
-            z: this.getCumulativeDays(),
+            d: this._i.$D.toString().padStart(2, '0'),// = this.getLDE('day', '2-digit', locale)
+            j: this._i.$D,// = this.getLDE('day', 'numeric', locale)
+            z: this._i.$O,// = this.getCumulativeDays()
             // Weekday
-            l: this.getLocaleDateElement('weekday', 'long', locale),
-            D: this.getLocaleDateElement('weekday', 'short', locale),
+            l: this.getLDE('weekday', 'long', locale),
+            D: this.getLDE('weekday', 'short', locale),
             //N: [7, 1, 2, 3, 4, 5, 6][(this._i.timezone === 'UTC' ? this._baseDate.getUTCDay() : this._baseDate.getDay())],// ISO-8601 format numeric weekday: 1 (Monday) - 7 (Sunday)
-            N: this.getWeekdayIndex('iso8601'),
+            N: this._i.$WD,// = this.getWeekdayIndex('iso8601')
             //w: this._i.timezone === 'UTC' ? this._baseDate.getUTCDay() : this._baseDate.getDay(),// numeric weekday: 0 (Sunday) - 6 (Saturday)
             w: this.getWeekdayIndex(),
             // Hour
-            a: this.getLocaleDateElement('hour', {hour12: false, hour: 'numeric'}, locale) > 12 ? 1 : 0,// in morning:0 or afternoon:1
-            g: parseInt(this.getLocaleDateElement('hour', {hour12: true, hour: 'numeric'}, 'en-US'), 10),
-            G: this._i.$H,// this.getLocaleDateElement('hour', {hour12: false, hour: 'numeric'}, locale),
-            h: parseInt(this.getLocaleDateElement('hour', {hour12: true, hour: '2-digit'}, 'en-US'), 10).toString().padStart(2, '0'),
-            H: this._i.$H.toString().padStart(2, '0'),// this.getLocaleDateElement('hour', {hour12: false, hour: '2-digit'}, locale),
+            a: this.getLDE('hour', {hour12: false, hour: 'numeric'}, locale) > 12 ? 1 : 0,// in morning:0 or afternoon:1
+            g: parseInt(this.getLDE('hour', {hour12: true, hour: 'numeric'}, 'en-US'), 10),
+            G: this._i.$H,// = this.getLDE('hour', {hour12: false, hour: 'numeric'}, locale)
+            h: parseInt(this.getLDE('hour', {hour12: true, hour: '2-digit'}, 'en-US'), 10).toString().padStart(2, '0'),
+            H: this._i.$H.toString().padStart(2, '0'),// = this.getLDE('hour', {hour12: false, hour: '2-digit'}, locale)
             // Minute
-            I: this._i.$M,// this.getLocaleDateElement('minute', 'numeric', locale),
-            i: this._i.$M.toString().padStart(2, '0'),// this.getLocaleDateElement('minute', '2-digit', locale),
+            C: this._i.$M,// = this.getLDE('minute', 'numeric', locale)
+            i: this._i.$M.toString().padStart(2, '0'),// = this.getLDE('minute', '2-digit', locale)
             // Second
-            S: this._i.$S,// this.getLocaleDateElement('second', 'numeric', locale),
-            s: this._i.$S.toString().padStart(2, '0'),// this.getLocaleDateElement('second', '2-digit', locale),
+            S: this._i.$S,// = this.getLDE('second', 'numeric', locale)
+            s: this._i.$S.toString().padStart(2, '0'),// = this.getLDE('second', '2-digit', locale)
             // Millisecond
-            V: this._i.$MS,// this.getLocaleDateElement('millisecond'),
-            v: this._i.$MS.toString().padStart(3, '0'),// this.getLocaleDateElement('millisecond', 'zerofill'),
+            V: this._i.$MS,// = this.getLDE('millisecond')
+            v: this._i.$MS.toString().padStart(3, '0'),// = this.getLDE('millisecond', 'zerofill')
             // TimeZone
-            e: this.timezone,// this._i.$TZ,
+            e: this.timezone,// = this._i.$TZ,
             Z: this._i.$TZ === 'UTC' ? 0 : this.getTZOffset('s'),
+            I: this.isDST() ? 1 : 0,
             // Full Datetime
             c: this.getISO(),
             r: this.getRFC(2822),// RFC 2822 format date
@@ -580,31 +620,31 @@ export default class Sunorhc {
 
     /**
      * Gets new Sunorhc instance of the local timezoned date from the UTC date.
+     * Specification: `new Sunorhc().getZoned()` should be equal `new Sunorhc('local')`.
+     * If an instance date is already in the local timezone, the same instance will be duplicated.
      * 
      * @public
      */
     getZoned() {
-        if (this.config.timezone === 'local') {
-            // Clone if an origin instance is local timezoned
-            return this.clone()
-        } else {
-            // Make new if an origin instance is UTC date
-            const newConfig = utils.deepMerge({}, this.config)
-            newConfig.timezone = 'local'
-            newConfig.tzName = ''
-            const sysTzOffset = new Date().getTimezoneOffset() * MS_A_MINUTE
-            const newPayloads = [
-                this._i.$Y,
-                this._i.$MON,
-                this._i.$D,
-                this._i.$H,
-                this._i.$M,
-                this._i.$S,
-                this._i.$MS - sysTzOffset,
-                newConfig
-            ]
-            return wrapper(...newPayloads)
+        // Make new if an origin instance is UTC date
+        const newConfig = utils.deepMerge({}, this.config)
+        newConfig.timezone = 'local'
+        newConfig.tzName = ''
+        const newPayloads = [
+            this._i.$Y,
+            this._i.$MON,
+            this._i.$D,
+            this._i.$H,
+            this._i.$M,
+            this._i.$S,
+            this._i.$MS,
+            newConfig
+        ]
+        if (this.config.timezone === 'UTC') {
+            // When to zoned date from UTC
+            newPayloads[6] = this._i.$MS - (this._baseDate.getTimezoneOffset() * MS_A_MINUTE)
         }
+        return wrapper(...newPayloads)
     }
 
     /**
@@ -639,10 +679,10 @@ export default class Sunorhc {
             offsetMS = _utcDt.getTime() - this._baseDate.getTime()
         switch (true) {
             case /^h(|ours?)$/i.test(unit):
-                return Math.round(offsetMS / MS_A_HOUR * 10) / 10
+                return Math.round(offsetMS / MS_A_HOUR * 100) / 100
             case /^min(|utes?)$/i.test(unit):
                 return Math.floor(offsetMS / MS_A_MINUTE)
-            case /^sec(|onds?)$/i.test(unit):
+            case /^s(|(ec(|onds?)))$/i.test(unit):
                 return Math.floor(offsetMS / MS_A_SECOND)
             case /^(full|hhmm)$/i.test(unit):
                 if (this.config.timezone !== 'UTC') {
@@ -650,7 +690,7 @@ export default class Sunorhc {
                         offsetM  = Math.floor((Math.abs(offsetMS) - (offsetH * MS_A_HOUR)) / MS_A_MINUTE),
                         offsetS  = Math.floor((Math.abs(offsetMS) - (offsetH * MS_A_HOUR + offsetM * MS_A_MINUTE)) / MS_A_SECOND),
                         remainMS = Math.abs(offsetMS) - (offsetH * MS_A_HOUR + offsetM * MS_A_MINUTE + offsetS * MS_A_SECOND),
-                        signStr  = offsetMS < 0 ? '+' : '-'
+                        signStr  = offsetMS <= 0 ? '+' : '-'
                     return /^full$/i.test(unit)
                            ? `${signStr}${offsetH.toString().padStart(2, '0')}:${offsetM.toString().padStart(2, '0')}:${offsetS.toString().padStart(2, '0')}.${remainMS.toString().padStart(3, '0')}`
                            : `${signStr}${offsetH.toString().padStart(2, '0')}:${offsetM.toString().padStart(2, '0')}`
@@ -709,7 +749,7 @@ export default class Sunorhc {
                     _modDt = wrapper(_bs.y, _bs.m, _tmp, _bs.h, _bs.mi, _bs.s, _bs.ms, _bs.tz)
                 }
                 break
-            case /^hours?$/i.test(unit):
+            case /^h(|ours?)$/i.test(unit):
                 _modDt = wrapper(_bs.y, _bs.m, _bs.d, _bs.h + payload, _bs.mi, _bs.s, _bs.ms, _bs.tz)
                 break
             case /^min(|utes?)$/i.test(unit):
@@ -825,19 +865,21 @@ export default class Sunorhc {
      * The week number for the year is calculated.
      *
      * @public
-     * @param {?object} date - must be the Date object if given
      */
-    getWeekOfYear(date=null) {
-        let _dt = date ? date : this._baseDate,
-            firstDayOfYear = this.config.timezone === 'UTC'
-                             ? new Date(Date.UTC(_dt.getUTCFullYear(), 0, 1))
-                             : new Date(_dt.getFullYear(), 0, 1)
-        if (_dt.getFullYear() < 100) {
-            firstDayOfYear = this.config.timezone === 'UTC'
-                             ? new Date(firstDayOfYear.setUTCFullYear(_dt.getUTCFullYear()))
-                             : new Date(firstDayOfYear.setFullYear(_dt.getFullYear()))
+    getWeekOfYear() {
+        const _isUTC = this.config.timezone === 'UTC',
+              _y = utils.hasKey(this, '_i')
+                   ? this._i.$Y
+                   : (_isUTC ? this._baseDate.getUTCFullYear() : this._baseDate.getFullYear())
+        let firstDayOfYear = _isUTC
+                            ? new Date(Date.UTC(_y, 0, 1))
+                            : new Date(_y, 0, 1)
+        if (_y < 100) {
+            firstDayOfYear = _isUTC
+                            ? new Date(firstDayOfYear.setUTCFullYear(_y))
+                            : new Date(firstDayOfYear.setFullYear(_y))
         }
-        let dayOfYear = (_dt.getTime() - firstDayOfYear.getTime() + MS_A_DAY) / MS_A_DAY
+        let dayOfYear = (this._baseDate.getTime() - firstDayOfYear.getTime() + MS_A_DAY) / MS_A_DAY
         return Math.ceil(dayOfYear / 7)
     }
 
@@ -845,11 +887,9 @@ export default class Sunorhc {
      * The total number of days in the year on the instantiated date is calculated.
      *
      * @public
-     * @param {?object} date - must be the Date object if given
      */
-    getDaysInYear(date=null) {
-        let _dt = date ? date : this._baseDate,
-            _y  = this.config.timezone === 'UTC' ? _dt.getUTCFullYear() : _dt.getFullYear(),
+    getDaysInYear() {
+        let _y  = this.config.timezone === 'UTC' ? this._baseDate.getUTCFullYear() : this.toZonedDate().getFullYear(),
             isLeapYear = _y % 4 == 0
         return isLeapYear ? 366 : 365
     }
@@ -858,30 +898,17 @@ export default class Sunorhc {
      * The total number of days in the month on the instantiated date is calculated.
      *
      * @public
-     * @param {?object} date - must be the Date object if given
      */
-    getDaysInMonth(date=null) {
-        let _dt = date ? date : this._baseDate,
-            _y, _m, _nmDt, _lmDt, lastDay
-        if (this.config.timezone === 'UTC') {
-            _y  = _dt.getUTCFullYear()
-            _m  = _dt.getUTCMonth()
-            _nmDt = new Date(Date.UTC(_y, _m + 1, 1, 0, 0, 0, 0))
-            if (_y < 100) {
-                _nmDt = new Date(_nmDt.setUTCFullYear(_y))
-            }
-            _lmDt = new Date(_nmDt.getTime() - 1)
-            lastDay = _lmDt.getUTCDate()
-        } else {
-            _y  = _dt.getFullYear()
-            _m  = _dt.getMonth()
-            _nmDt = new Date(_y, _m + 1, 1, 0, 0, 0, 0)
-            if (_y < 100) {
-                _nmDt = new Date(_nmDt.setFullYear(_y))
-            }
-            _lmDt = new Date(_nmDt.getTime() - 1)
-            lastDay = _lmDt.getDate()
+    getDaysInMonth() {
+        const _y = this.config.timezone === 'UTC' ? this._baseDate.getUTCFullYear() : this.toUTCDate().getUTCFullYear(),
+              _m = this.config.timezone === 'UTC' ? this._baseDate.getUTCMonth() : this.toUTCDate().getUTCMonth()
+        let _nmDt = new Date(Date.UTC(_y, _m + 1, 1, 0, 0, 0, 0)),
+            _lmDt, lastDay
+        if (_y < 100) {
+            _nmDt = new Date(_nmDt.setUTCFullYear(_y))
         }
+        _lmDt = new Date(_nmDt.getTime() - 1)
+        lastDay = _lmDt.getUTCDate()
         return lastDay
     }
 
@@ -889,26 +916,18 @@ export default class Sunorhc {
      * Get cumulative days in year untill current day from first day of year.
      *
      * @public
-     * @param {?object} date - must be the Date object if given
      */
-    getCumulativeDays(date=null) {
-        let _dt = date ? date : this._baseDate,
-            _y, _fDt, _diff
-        if (this.config.timezone === 'UTC') {
-            _y = _dt.getUTCFullYear()
-            _fDt = new Date(Date.UTC(_y, 0, 1, 0, 0, 0, 0))
-            if (_y < 100) {
-                _fDt = new Date(_fDt.setUTCFullYear(_y))
-            }
-        } else {
-            _y = _dt.getFullYear()
-            _fDt = new Date(_y, 0, 1, 0, 0, 0, 0)
-            if (_y < 100) {
-                _fDt = new Date(_fDt.setFullYear(_y))
-            }
+    getCumulativeDays() {
+        const _y = this._baseDate.getUTCFullYear()
+        let _fDt = new Date(Date.UTC(_y, 0, 1, 0, 0, 0, 0)),
+            _mtime = utils.hasKey(this, '_i') ? this._i.$UMS : this.getUnixTime('ms')
+        if (_y < 100) {
+            _fDt = new Date(_fDt.setUTCFullYear(_y)) 
         }
-        _diff = _dt.getTime() - _fDt.getTime()
-        return Math.floor(_diff / MS_A_DAY)
+        if (this.config.timezone === 'local') {
+            _mtime -= this.config.offset
+        }
+        return Math.abs(Math.floor((_mtime - _fDt.getTime()) / MS_A_DAY))
     }
 
     /**
@@ -920,35 +939,37 @@ export default class Sunorhc {
     getWeekdayIndex(format=null) {
         if (/^iso8601$/i.test(format)) {
             // ISO-8601 format numeric weekday: 1 (Monday) - 7 (Sunday)
-            return [7, 1, 2, 3, 4, 5, 6][(this.config.timezone === 'UTC' ? this._baseDate.getUTCDay() : this._baseDate.getDay())]
+            return [7, 1, 2, 3, 4, 5, 6][(this.config.timezone === 'UTC' ? this._baseDate.getUTCDay() : this.toUTCDate().getDay())]
         } else {
             // numeric weekday: 0 (Sunday) - 6 (Saturday)
-            return this.config.timezone === 'UTC' ? this._baseDate.getUTCDay() : this._baseDate.getDay()
+            return this.config.timezone === 'UTC' ? this._baseDate.getUTCDay() : this.toUTCDate().getDay()
         }
      }
 
     /**
      * Get the ISO 8601 string of date and time depended on specified format.
+     * Note: If the instance datetime is local time, it will be formatted as UTC datetime.
      *
      * @public
      * @param {?string} format [format=full] - "date", "week", "weekday", "ordinal", "time", "offset", "noz" or "full".
      */
     getISO(format="full") {
-        let _dtP = {
-            y:  Math.abs(this._i.$Y) < 1000
-                ? (this._i.$Y < 0 ? '-': '') + Math.abs(this._i.$Y).toString().padStart(4, '0')
-                : this._i.$Y.toString(),
-            m:  this._i.$MON.toString().padStart(2, '0'),
-            d:  this._i.$D.toString().padStart(2, '0'),
-            w:  `W${this._i.$W.toString().padStart(2, '0')}`,
-            wd: this.getWeekdayIndex('iso8601'),
-            o:  this.getCumulativeDays().toString().padStart(3, '0'),
-            h:  this._i.$H.toString().padStart(2, '0'),
-            mi: this._i.$M.toString().padStart(2, '0'),
-            s:  this._i.$S.toString().padStart(2, '0'),
-            ms: this._i.$MS.toString().padStart(3, '0'),
-            of: this._i.$TZOL,
-        }
+        const _i = this._i,
+              _dtP = {
+                y:  Math.abs(_i.$Y) < 1000
+                    ? (_i.$Y < 0 ? '-': '') + Math.abs(_i.$Y).toString().padStart(4, '0')
+                    : _i.$Y.toString(),
+                m:  _i.$MON.toString().padStart(2, '0'),
+                d:  _i.$D.toString().padStart(2, '0'),
+                w:  `W${_i.$W.toString().padStart(2, '0')}`,
+                wd: _i.$WD,
+                o:  this.getCumulativeDays(),
+                h:  _i.$H.toString().padStart(2, '0'),
+                mi: _i.$M.toString().padStart(2, '0'),
+                s:  _i.$S.toString().padStart(2, '0'),
+                ms: _i.$MS.toString().padStart(3, '0'),
+                of: _i.$TZOL,
+            }
         switch (true) {
             case /^date$/i.test(format):
                 return `${_dtP.y}-${_dtP.m}-${_dtP.d}`
@@ -963,9 +984,10 @@ export default class Sunorhc {
             case /^offset$/i.test(format):
                 return _dtP.of
             case /^noz$/i.test(format):
+                // The offset in "HH:mm" format is given instead of the suffix "Z" in the UTC time zone.
                 return `${_dtP.y}-${_dtP.m}-${_dtP.d}T${_dtP.h}:${_dtP.mi}:${_dtP.s}.${_dtP.ms}${_dtP.of}`
             default:
-                if (this.config.timezone === 'UTC' && this._i.$TZO == 0) {
+                if (this.config.timezone === 'UTC') {
                     _dtP.of = 'Z'
                 }
                 return `${_dtP.y}-${_dtP.m}-${_dtP.d}T${_dtP.h}:${_dtP.mi}:${_dtP.s}.${_dtP.ms}${_dtP.of}`
@@ -994,7 +1016,7 @@ export default class Sunorhc {
             _parsed = _origin.split(/\s*\(/).pop().replace(')', '') || null
         switch (true) {
             case /^2822$/.test(format):
-                _offset = _i.$TZO == 0 ? 'GMT' : _offset
+                _offset = _i.$TZO == 0 && !this.hasDST() ? 'GMT' : _offset
                 return `${_i.$WDS}, ${_day} ${_i.$MONS} ${_year} ${_hour}:${_minute}:${_second} ${_offset}`
             case /^3339$/i.test(format):
                 return `${_year}-${_month}-${_day}T${_hour}:${_minute}:${_second}${_offset}`
@@ -1004,6 +1026,70 @@ export default class Sunorhc {
                     _offset += this.config.timezone === 'UTC' ? ` (UTC)` : ` (${_parsed})`
                 }
                 return `${_i.$WDS} ${_i.$MONS} ${_day} ${_year} ${_hour}:${_minute}:${_second} ${_offset}`
+        }
+    }
+
+    /**
+     * Whether or not the timezone to which the instance's primitive datatime belongs observes DST.
+     *
+     * @public
+     */
+    hasDST() {
+        if (this.config.timezone === 'UTC') {
+            return false
+        }
+        if (!utils.hasKey(this, '_cacheDST')) {
+            const fy  = this._baseDate.getFullYear()
+            let _dt = new Date(fy, 0, 1)
+            if (fy < 100) {
+                _dt = new Date(_dt.setFullYear(fy))
+            }
+            this._cacheDST = [_dt.getTimezoneOffset()]
+            for (let mi = 1; mi < 12; mi++) {
+                let _tmp = new Date(fy, mi, 1)
+                if (fy < 100) {
+                    _tmp = new Date(_tmp.setFullYear(fy))
+                }
+                this._cacheDST.push(_tmp.getTimezoneOffset())
+            }
+        }
+        return Math.min(...this._cacheDST) < Math.max(...this._cacheDST)
+    }
+
+    /**
+     * Whether the primitive datetime of the instance is during DST or not.
+     *
+     * @public
+     */
+     isDST() {
+        if (!this.hasDST()) {
+            return false
+        }
+        return this._baseDate.getTimezoneOffset() == Math.min(...this._cacheDST)
+    }
+
+    /**
+     * Get the time difference when the instance's timezone observes DST.
+     * Returns the relative value of the time difference between local time and DST.
+     *
+     * @public
+     * @param {?string} unit [unit=ms] - allowed units are "hour", "minute", "second" or "millisecond".
+     */
+     getDSTOffset(unit='ms') {
+        if (!this.isDST()) {
+            return 0
+        }
+        const offsetMS = (Math.min(...this._cacheDST) * MS_A_MINUTE) - (Math.max(...this._cacheDST) * MS_A_MINUTE)
+        switch (true) {
+            case /^h(|ours)?$/i.test(unit):
+                return offsetMS / MS_A_HOUR
+            case /^min(|utes?)$/i.test(unit):
+                return offsetMS / MS_A_MINUTE
+            case /^s(|(ec(|onds?)))$/i.test(unit):
+                return offsetMS / MS_A_SECOND
+            case /^(ms|milliseconds?)$/i.test(unit):
+            default:
+                return offsetMS
         }
     }
 
@@ -1066,6 +1152,10 @@ export default class Sunorhc {
 
     get weekdayShort() {
         return this._i.$WDS
+    }
+
+    get ordinalDays() {
+        return this._i.$O
     }
 
     get hour() {

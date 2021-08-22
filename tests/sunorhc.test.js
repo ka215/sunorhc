@@ -2,17 +2,47 @@ import {default as Sunorhc} from '../src/index'
 
 const PACKAGE_VERSON  = process.env.npm_package_version
 const INSTANT_PROPS   = [
-    "$CE", "$CEMS", "$D", "$E", "$H", "$M",
-    "$MON", "$MONL", "$MONS", "$MS", "$S", "$TZ",
-    "$TZO", "$TZOF", "$TZOL", "$U", "$UMS", "$W",
-    "$WD", "$WDL", "$WDS", "$Y",
+    "$CE", "$CEMS", "$D", "$DST", "$DSTO", "$E",
+    "$H", "$M", "$MON", "$MONL", "$MONS", "$MS", 
+    "$O", "$S", "$TZ", "$TZO", "$TZOF", "$TZOL",
+    "$U", "$UMS", "$W", "$WD", "$WDL", "$WDS",
+    "$Y",
 ]
 const CE_EPOCH_UNIX = -62135596800000
+const CE_EPOCH_FROM_UNIX_EPOCH = Math.abs(CE_EPOCH_UNIX)
 // UTC datetime based on the current local datetime.
 // Same values are below:
 // - new Date(Date.UTC(NOW.getFullYear(), NOW.getMonth(), NOW.getDate(), NOW.getHours(), NOW.getMinutes() + NOW.getTimezoneOffset(), NOW.getSeconds(), NOW.getMilliseconds()))
 // - new Date(Date.UTC(NOW.getUTCFullYear(), NOW.getUTCMonth(), NOW.getUTCDate(), NOW.getUTCHours(), NOW.getUTCMinutes(), NOW.getUTCSeconds(), NOW.getUTCMilliseconds()))
 const NOW = new Date()
+const SYSTEM_TZ_OFFSET = NOW.getTimezoneOffset()// This offset value with daylight saving time.
+const hasSystemDST = (toArray=false) => {
+    const fy  = NOW.getFullYear(),
+          monthsTestOrder = [1,2,3,4,5,6,7,8,9,10,11]//[6,7,5,8,4,9,3,10,2,11,1]
+    let _dt  = new Date(fy, 0, 1),
+        _dst = [_dt.getTimezoneOffset()]
+    for (let mi = 0; mi < 11; mi++) {
+        let _tmp = new Date(fy, monthsTestOrder[mi], 1)
+        _dst.push(_tmp.getTimezoneOffset())
+    }
+    return toArray ? _dst : (Math.min(..._dst) < Math.max(..._dst))
+}
+const getSystemTZOffset = (dst=false) => {
+    const _os = hasSystemDST(true),
+          _min = Math.min(..._os),
+          _max = Math.max(..._os)
+    return dst ? _min : _max
+}
+const SYSTEM_STANDARD_TZ_OFFSET = getSystemTZOffset(false)
+const SYSTEM_DST_TZ_OFFSET = getSystemTZOffset(true)
+const isSystemDSTNow = () => {
+    if (hasSystemDST()) {
+        return SYSTEM_TZ_OFFSET == SYSTEM_DST_TZ_OFFSET
+    } else {
+        return false
+    }
+}
+const SYSTEM_IS_DST = isSystemDSTNow()
 const convLocalISOString = (date) => {
     let offset = 0, zoned = null
     if (date instanceof Date) {
@@ -30,6 +60,11 @@ const convLocalISOString = (date) => {
         return zoned.toISOString().replace(/z$/i, `${signString}${offsetHours.toString().padStart(2, '0')}:${offsetMinutes.toString().padStart(2, '0')}`)
     }
 }
+const parseDateString = (str) => {
+    const REGEX = /^(-?\d{1,}[-\/]\d{1,2}[-\/]\d{1,2})((?:\s|T)\d{1,2}:\d{2}:\d{2}(?:\.\d{3}))?(?<surfix>.*)?$/,
+          _m = str.match(REGEX)
+    return _m ? _m : false
+}
 const getDateElements = (date, isUTC=false) => {
     return isUTC ? [
         date.getUTCFullYear(), date.getUTCMonth() + 1, date.getUTCDate(), date.getUTCHours(), date.getUTCMinutes(), date.getUTCSeconds(), date.getUTCMilliseconds()
@@ -41,22 +76,34 @@ const getDateElements = (date, isUTC=false) => {
 const NOW_UTC   = NOW.toISOString()
 const NOW_LOCAL = convLocalISOString(NOW_UTC)
 
+const START_TIMER = Date.now()
+const getTimer = () => {
+    return Date.now() - START_TIMER
+}
+
+console.info(`* NOW_UTC: %s (%d)\n* NOW_LOCAL: %s\n* STANDARD_TZ_OFFSET: %d (%fh)\n* NOW_TZ_OFFSET: %d (%fh)\n* HAS_DST: %s [%s]\n* NOW_DST: %s`,
+             NOW_UTC, NOW.getTime(),
+             NOW_LOCAL,
+             SYSTEM_STANDARD_TZ_OFFSET, SYSTEM_STANDARD_TZ_OFFSET / 60,
+             SYSTEM_TZ_OFFSET, SYSTEM_TZ_OFFSET / 60,
+             hasSystemDST() ? 'Yes': 'No', hasSystemDST(true).join(', '),
+             SYSTEM_IS_DST ? 'Yes' : 'No')
+
+jest.useFakeTimers()
+
 beforeEach(() => {
-    global.START_TIMER = Date.now()
-    global.getTimer = () => {
-        const NOW_TIMER = Date.now()
-        return NOW_TIMER - START_TIMER
-    }
     global.randDate = () => {
         return new Date(+(new Date()) - Math.floor(Math.random() * 10000000000))
     }
-    //console.log(`NOW_UTC: %s (%d) | NOW_LOCAL: %s`, NOW_UTC, NOW.getTime(), NOW_LOCAL)
 })
 
 afterEach(() => {
-    delete global.START_TIMER
-    delete global.getTimer
+    jest.clearAllTimers()
 })
+
+
+/* ----------------------------------------------------------------------------------------------------------------- */
+
 
 describe('Constructor arguments acceptance behavior', () => {
 
@@ -124,8 +171,11 @@ describe('Constructor arguments acceptance behavior', () => {
               s2 = new Sunorhc(NOW, 'local')// Should be instanted datetime on local timezone.
         expect(s1.toISOString).not.toBe(NOW_LOCAL)
         expect(s1.toISOString).toBe(NOW_UTC)
-        expect(s2.toISOString).not.toBe(NOW_UTC)
-        expect(s2.toISOString).toBe(NOW_LOCAL)
+        if (s2.timezone === 'UTC') {
+            expect(s2.toISOString).toBe(NOW_UTC)
+        } else {
+            expect(s2.toISOString).toBe(NOW_LOCAL.replace(/Z$/, s2.instant.$TZOL))
+        }
     })
 
     test('Instantiation by unix time', () => {
@@ -181,95 +231,135 @@ describe('Constructor arguments acceptance behavior', () => {
     })
 
     test('Instantiation by string as like date', () => {
-        const chk = {
-            // As like RFC 2822 format string
-            'December 17, 1995 03:24:00': {
-                local: '1995-12-17T03:24:00.000',
-                // This format string is parsed as local timezone date on the Date object.
-                utc:   new Date(1995,11,17,3,24,0).toISOString()
-            },
+        // Recommended library format set
+        const chk1 = {
             // As kind of ISO 8601 format
-            '1996-11-16T04:35:11': {// without timezone offset
-                local: '1996-11-16T04:35:11.000',
-                // This format string is parsed as UTC date on the Date object.
-                utc:   new Date(Date.UTC(1996,10,16,4,35,11)).toISOString()
+            '1996-11-16T04:35:11': {
+                args:  [1996,10,16,4,35,11],
+            },
+            '2019-04-27T07:22:21Z': {
+                args:  [2019,3,27,7,22,21],
             },
             '2011-07-12T04:01:23.789+09:00': {// with timezone offset
-                local: '2011-07-12T04:01:23.789',
-                // This format string is parsed as local timezoned date on the Date object.
-                utc:   new Date(2011,6,12,4,1,23,789).toISOString()
+                args:  [2011,6,12,4 - 9,1,23,789],
             },
             '1999-03-22 05:06:07.089+0100': {// with timezone offset
-                // The hour on UTC date is 4 by offset +0100, then that convert on system timezone from such UTC date. 
-                local: convLocalISOString(new Date(Date.UTC(1999,2,22,4,6,7,89))),
-                utc:   '1999-03-22T04:06:07.089Z'
+                args:  [1999,2,22,5 - 1,6,7,89],
+            },
+            // As RFC format generated by Date::toString() 
+            'Wed May 05 2010 04:12:06 GMT+0000 (GMT)': {
+                args: [2010,4,5,4,12,6],
             },
             // As like "yyyy/MM/dd H:mm" format is mainly used in the "ja-JP" locale
             '1997/8/13 9:10': {
-                local: '1997-08-13T09:10:00.000',
-                // This format string is parsed as UTC date on the Date object.
-                utc:   new Date(Date.UTC(1997,7,13,9,10)).toISOString()
+                args: [1997,7,13,9,10],
             },
             // As like "EEE, d MMM yyyy HH:mm:ss Z" format is mainly used the "en_US" locale
-            'Sat, 24 Aug 2002 16:23:07 -0500': {
-                local: convLocalISOString(new Date(Date.UTC(2002,7,24,16 + 5,23,7))),
-                utc:   '2002-08-24T21:23:07.000Z'
+            'Sat, 24 Aug 2002 16:23:07 -0500': {// with timezone offset
+                args: [2002,7,24,16 + 5,23,7],
+            },
+        }
+        let cnt = 0
+        /* */
+        for (let [str, cor] of Object.entries(chk1)) {
+            const sl = new Sunorhc(str, 'local'),// local only
+                  sw = new Sunorhc(str),// UTC or local depend on givin string
+                  slTzO = sl.instant.$TZO,
+                  swTzO = sw.instant.$TZO
+            let chkStr = '',
+                _chkLocalDt = new Date(...cor.args),
+                _chkUtcDt = new Date(Date.UTC(...cor.args)),
+                _chkUtcStr = _chkUtcDt.toISOString(),// UTC -> UTC
+                _chkLocalStr = _chkUtcDt.toISOString().replace(/Z$/, sl.instant.$TZOL)// UTC -> local
+            /*
+            console.log(`test(%d)::local: %s \nS("%s", 'local') => %s [%s]\n[utc]   => %s\n[local] => %s (%s)\n`,
+                        ++cnt, ''.padStart(80, '-'),
+                        str, sl.toISOString, sl.timezone,
+                        _chkUtcStr, _chkLocalStr, `${slTzO < 0 ? '+': ''}${slTzO / -3600000}`,
+                        ' | ', sl.isDST() ? 'in DST': 'out DST',
+                        ' | System Time:', hasSystemDST() ? 'has DST': 'no DST', SYSTEM_DST_TZ_OFFSET)
+            */
+            chkStr = sl.timezone === 'UTC' ? _chkUtcStr : _chkLocalStr 
+            expect(sl.toISOString).toBe(chkStr)
+            /*
+            console.log(`test(%d)::UTC: %s \nS("%s") => %s [%s]\n[utc]   => %s (%s)`,
+                        cnt, ''.padStart(80, '-'),
+                        str, sw.toISOString, sw.timezone,
+                        _chkUtcDt.toISOString(), `${swTzO < 0 ? '+': ''}${swTzO / -3600000}`)
+            console.log(`Expect(%d-2): "%s" === "%s" (%s)`, cnt, sw.toISOString, _chkUtcDt.toISOString(), sw.toISOString === _chkUtcDt.toISOString() ? 'OK': 'NG')
+            */
+            expect(sw.toISOString).toBe(_chkUtcStr)
+        }
+        // Instance creation is a unique case
+        const chk2 = {
+            // As like RFC 2822 format string
+            'December 17, 1995 03:24:00': { 
+                args: [1995,11,17,3,24,0],
+            },
+            'Fri Feb 01 2008 10:20:30': {
+                args: [2008,1,1,10,20,30],
             },
             // As like "EEE, d MMM yyyy HH:mm:ss" format is mainly used the "en_US" locale
-            'Sat, 24 Aug 2002 16:23:07': {// without timezone offset
-                local: '2002-08-24T16:23:07.000',
-                // This format string is parsed as local timezone date on the Date object.
-                utc:   new Date(2002,7,24,16,23,7).toISOString()
+            'Sat, 24 Aug 2002 16:23:07': {
+                args: [2002,7,24,16,23,7],
             },
             // As like "M/d/yyyy h:mm:ss a" format is mainly used the "en_US" locale
             '9/4/2004 2:34:56 PM': {
-                local: '2004-09-04T14:34:56.000',
-                utc:   new Date(2004,8,4,14,34,56).toISOString()
+                args: [2004,8,4,14,34,56],
             },
             // As like "d-MMM-yyyy HH:mm:ss" format is mainly used the "en_GB" locale
             '7-Mar-2005 10:08:01': {
-                local: '2005-03-07T10:08:01.000',
-                utc:   new Date(2005,2,7,10,8,1).toISOString()
+                args: [2005,2,7,10,8,1],
             },
             // As like "M-d-yy HH:mm" format is mainly used the "fr_FR" locale
             '7-14-94 08:30': {
-                local: '1994-07-14T08:30:00.000',
-                utc:   new Date(1994,6,14,8,30).toISOString()
+                args: [1994,6,14,8,30],
             },
             // As like "yyyy.MM.dd. H:mm:ss" format is mainly used the "hu" locale
             '2006.11.09. 9:09:09': {
-                local: '2006-11-09T09:09:09.000',
-                utc:   new Date(2006,10,9,9,9,9).toISOString()
-            },
-            // As RFC format generated by Date::toString()
-            'Fri Feb 01 2008 10:20:30': {// without timezone offset
-                local: '2008-02-01T10:20:30.000',
-                utc:   new Date(2008,1,1,10,20,30).toISOString()
-            },
-            'Wed May 05 2010 04:12:06 GMT+0000 (GMT)': {// with timezone offset
-                local: convLocalISOString(new Date(Date.UTC(2010,4,5,4,12,6))),
-                utc:   '2010-05-05T04:12:06.000Z'
+                args: [2006,10,9,9,9,9],
             },
         }
-        for (let [str, cor] of Object.entries(chk)) {
-            const sl = new Sunorhc(str, 'local'),
-                  su = new Sunorhc(str),
-                  offsetStr = sl.instant.$TZOL
-            if (!cor.local.match(/\+.*$/)) {
-                cor.local += offsetStr
-            }
-            //console.log(sl.toISOString === cor.local + offsetStr, su.toISOString === cor.utc)
-            expect(sl.toISOString).toBe(cor.local)
-            expect(su.toISOString).toBe(cor.utc)
+        cnt = 0
+        for (let [str, cor] of Object.entries(chk2)) {
+            const sl = new Sunorhc(str, 'local'),// local only
+                  sw = new Sunorhc(str),// UTC or local depend on givin string
+                  slTzO = sl.instant.$TZO,
+                  swTzO = sw.instant.$TZO
+            let chkStr = '',
+                _chkLocalDt = new Date(...cor.args),
+                _chkLocalStr = _chkLocalDt.toISOString(),// local -> UTC
+                _chkUtcDt = new Date(Date.UTC(...cor.args)),
+                _chkUtcStr = _chkUtcDt.toISOString().replace(/Z$/, sl.instant.$TZOL)// UTC -> UTC
+            /*
+            console.log(`test(%d)::local: %s \nS("%s", 'local') => %s [%s]\n[utc]   => %s\n[local] => %s (%s)\n`,
+                        ++cnt, ''.padStart(80, '-'),
+                        str, sl.toISOString, sl.timezone,
+                        _chkLocalStr, _chkUtcStr, `${slTzO < 0 ? '+': ''}${slTzO / -3600000}`,
+                        ' | ', sl.isDST() ? 'in DST': 'out DST',
+                        ' | System Time:', hasSystemDST() ? 'has DST': 'no DST', SYSTEM_DST_TZ_OFFSET)
+            */
+            chkStr = sl.timezone === 'UTC' ? _chkLocalStr : _chkLocalStr.replace(/Z$/, sl.instant.$TZOL)
+            expect(sl.toISOString).toBe(chkStr)
+            /*
+            console.log(`test(%d)::UTC: %s \nS("%s") => %s [%s]\n[utc]   => %s (%s)`,
+                        cnt, ''.padStart(80, '-'),
+                        str, sw.toISOString, sw.timezone,
+                        _chkUtcDt.toISOString(), `${swTzO < 0 ? '+': ''}${swTzO / -3600000}`)
+            console.log(`Expect(%d-2): "%s" === "%s" (%s)`, cnt, sw.toISOString, _chkLocalDt.toISOString(), sw.toISOString === _chkLocalDt.toISOString() ? 'OK': 'NG')
+            */
+            expect(sw.toISOString).toBe(_chkLocalDt.toISOString())
         }
+
         // An invalid date string given
         const sn = new Sunorhc('invalid date string'),
               s2 = new Sunorhc('22 marzo 1999 5.06.07'),// as like "it_IT" locale format
               ntSec = Math.ceil(getTimer() / 1000) * 1000
         expect(sn.toDate).not.toBe('Invalid Date')
         expect(s2.toDate).not.toBe('Invalid Date')
-        expect(sn.instant.$UMS - NOW.getTime()).toBeLessThanOrEqual(ntSec)
-        expect(s2.instant.$UMS - NOW.getTime()).toBeLessThanOrEqual(ntSec * 2)
+        // Unreliable testing because delay times are always inaccurate
+        // - expect(sn.instant.$UMS - NOW.getTime()).toBeLessThanOrEqual(ntSec)
+        // - expect(s2.instant.$UMS - NOW.getTime()).toBeLessThanOrEqual(ntSec * 2)
     })
 
     test('Overriding by object for the plugin configuration', () => {
@@ -302,6 +392,7 @@ describe('Constructor arguments acceptance behavior', () => {
                 },
                 offset: expect.any(Number),// Be automatically added by plugin
                 tzName: expect.any(String),// Only added when a detailed timezone name is specified
+                verbose: expect.any(Boolean),
               },
               opt1 = {
                 version: '0.9.1a',
@@ -363,7 +454,7 @@ describe('Constructor arguments acceptance behavior', () => {
         expect(s1.config.tzName).toBe(opt1.timezone)
         expect(s3.config.timezone).toBe('UTC')
         expect(s3.config.tzName).toBe('')
-        expect(s4.config.timezone).toBe('local')
+        expect(s4.config.timezone).toBe(SYSTEM_STANDARD_TZ_OFFSET == 0 && !hasSystemDST() ? 'UTC' : 'local')
         expect(s4.config.tzName).toBe('')
         expect(s5.config.dateArgs.$y).toBe(NOW.getFullYear())// cannot be overwritten
         expect(s5.config.offset).toBe(0)// cannot be overwritten
@@ -393,14 +484,20 @@ describe('Constructor arguments acceptance behavior', () => {
         expect(sf(undefined).isValid()).toBe(true)
         expect(sf(undefined).timezone).toBe('UTC')
         expect(sf('now').isValid()).toBe(true)
-        expect(sf('now').timezone).toBe('local')
+        expect(sf('now').timezone).toBe('UTC')
+        //expect(sf('now').timezone).toBe(SYSTEM_TZ_OFFSET == 0 ? 'UTC' : 'local')
     })
 
 })
 
+
+/* ----------------------------------------------------------------------------------------------------------------- */
+
+
 describe('Getters test', () => {
     const s1 = new Sunorhc(NOW),// UTC
-          s2 = new Sunorhc(NOW, 'local')// local
+          s2 = new Sunorhc(NOW, 'local'),// local
+          isUTC = SYSTEM_STANDARD_TZ_OFFSET == 0 && !hasSystemDST()// Whether the system timezone is UTC
  
     test('Get package version', () => {
         expect(s1.version).toBe(`v${PACKAGE_VERSON}`)
@@ -413,16 +510,20 @@ describe('Getters test', () => {
     })
 
     test('Get Date object', () => {
+        const _m = parseDateString(NOW_LOCAL)
         expect(s1.toDate instanceof Date).toBe(true)
         expect(s1.toDate.toISOString()).toBe(NOW_UTC)
-        expect(s2.toDate.toISOString().replace(/z$/i, '')).toBe(NOW_LOCAL.replace(/\+.*$/, ''))
+        expect(s2.toDate.toISOString()).toBe(`${_m[1]}${_m[2]}Z`)
+        //expect(s2.toDate.toISOString().replace(/z$/i, '')).toBe(NOW_LOCAL.replace(/\+.*$/, ''))
     })
 
     test('Get ISO 8601 date string', () => {
-        expect(s1.toISOString).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}.\d{3}Z$/)// UTC
-        expect(s2.toISOString).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}.\d{3}(-|\+)\d{2}:\d{2}$/)// local
+        const REGEX_UTC = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}.\d{3}Z$/,
+              REGEX_ZONED = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}.\d{3}(-|\+)\d{2}:\d{2}$/
+        expect(s1.toISOString).toMatch(REGEX_UTC)// UTC
+        expect(s2.toISOString).toMatch(isUTC ? REGEX_UTC : REGEX_ZONED)// local
         expect(s1.toISOString).toBe(NOW_UTC)
-        expect(s2.toISOString).toBe(NOW_LOCAL)
+        expect(s2.toISOString).toBe(isUTC ? NOW_UTC : NOW_LOCAL)
     })
 
     test('Get RFC formatted string', () => {
@@ -434,9 +535,16 @@ describe('Getters test', () => {
                 return _m[1] + _m[2].slice(0, 2) + ':' + _m[2].slice(2)
               },
               tzOffsetStr1 = getLocalTZOffsetString(),
-              tzOffsetStr2 = getLocalTZOffsetString().replace(':', '')
+              tzOffsetStr2 = tzOffsetStr1.replace(':', '')
         expect(su.toString).toBe('Tue Aug 10 2021 15:14:26 GMT+0000 (UTC)')
-        expect(sl.toString).toBe(`Tue Aug 10 2021 15:14:26 GMT${tzOffsetStr2} (GMT${tzOffsetStr1})`)
+        if (isUTC) {
+            expect(sl.toString).toBe('Tue Aug 10 2021 15:14:26 GMT+0000 (UTC)')
+        } else {
+            const _m = sl.toString.match(/^(Tue|Wed) Aug 1[01] 2021 \d{2}:\d{2}:26 GMT(.*) \(GMT(.*)\)$/)
+            expect(sl.toString).toBe(_m[0])
+            expect(_m[2]).toBe(tzOffsetStr2)
+            expect(_m[3]).toBe(tzOffsetStr1 === '+00:00' ? '' : tzOffsetStr1)
+        }
     })
 
     test('Get year', () => {
@@ -544,6 +652,21 @@ describe('Getters test', () => {
         expect(new Sunorhc(2020,1,12).weekdayLong).toBe('Sunday')
     })
 
+    test('Get ordinalDays', () => {
+        // Retrieve the ordinal days in year (0-365)
+        for (let _d = 1; _d <= 366; _d++) {
+            expect(new Sunorhc(2020, 1, _d).ordinalDays).toBe(_d - 1)
+            expect(new Sunorhc(2020, 1, _d, 'local').ordinalDays).toBe(_d - 1)
+        }
+        // If you are moved up to the next year
+        expect(new Sunorhc(2020, 1, 367).ordinalDays).toBe(0)
+        expect(new Sunorhc(2020, 1, 367, 'local').ordinalDays).toBe(0)
+        expect(new Sunorhc(2020, 1, 368).ordinalDays).toBe(1)
+        expect(new Sunorhc(2020, 1, 368, 'local').ordinalDays).toBe(1)
+        expect(new Sunorhc(2021, 1, 366).ordinalDays).toBe(0)// not leap year
+        expect(new Sunorhc(2021, 1, 366, 'local').ordinalDays).toBe(0)// not leap year
+    })
+
     test('Get hour', () => {
         expect(new Sunorhc(2020,1,1,-1).hour).toBe(23)
         for (let _h = 0; _h < 24; _h++) {
@@ -618,12 +741,13 @@ describe('Getters test', () => {
 
     test('Get TimeZone', () => {
         expect(new Sunorhc().timezone).toBe('UTC')
-        expect(new Sunorhc('local').timezone).toBe('local')
+        expect(new Sunorhc('local').timezone).toBe(SYSTEM_STANDARD_TZ_OFFSET == 0 && !hasSystemDST() ? 'UTC' : 'local')
         expect(new Sunorhc('America/New_York').timezone).toBe('America/New_York')
         expect(new Sunorhc('Europe/Berlin').timezone).toBe('Europe/Berlin')
         expect(new Sunorhc('Asia/Tokyo').timezone).toBe('Asia/Tokyo')
         expect(new Sunorhc(2001,4,2,'Etc/UTC').timezone).toBe('Etc/UTC')
-        expect(new Sunorhc('Singapore').timezone).toBe('local')// Deprecated timezone name
+        // If an unexpected string is given, the current time in UTC will be instantiated
+        expect(new Sunorhc('Singapore').timezone).toBe('UTC')// Deprecated timezone name
     })
 
     test('Get TimeZone offset', () => {
@@ -635,8 +759,12 @@ describe('Getters test', () => {
         expect(new Sunorhc(1867,11,7,'local').tzOffset).toBe(getLocalTZOffset(1867,11,7))// local
         expect(new Sunorhc(2001,4,2,'local').tzOffset).toBe(getLocalTZOffset(2001,4,2))// local
         // The time zone offset that can be obtained by the getter is the time zone of the system in which Sunorhc is running.
-        expect(new Sunorhc(2021,2,3,'America/New_York').tzOffset).not.toBe(18000000)// Timezone "America/New_York" offset is "UTC-05:00" (= 18000000 ms)
-        expect(new Sunorhc(2021,2,3,'America/New_York').tzOffset).toBe(getLocalTZOffset(2021,2,3))
+        if (SYSTEM_STANDARD_TZ_OFFSET * 60000 != 18000000) {// Timezone "America/New_York" offset is "UTC-05:00" (= 18000000 ms)
+            expect(new Sunorhc(2021,2,3,'America/New_York').tzOffset).not.toBe(18000000)
+            expect(new Sunorhc(2021,2,3,'America/New_York').tzOffset).toBe(getLocalTZOffset(2021,2,3))
+        } else {
+            expect(new Sunorhc(2021,2,3,'America/New_York').tzOffset).toBe(18000000)
+        }
     })
 
     test('Get TimeZone offset string as the "HH:MM" format', () => {
@@ -654,7 +782,8 @@ describe('Getters test', () => {
         expect(new Sunorhc('Europe/Berlin').tzOffsetHM).toBe(localOffsetString)
         expect(new Sunorhc('Asia/Tokyo').tzOffsetHM).toBe(localOffsetString)
         expect(new Sunorhc(2001,4,2,'Etc/UTC').tzOffsetHM).toBe(getLocalTZOffsetString(2001,4,2))
-        expect(new Sunorhc('Singapore').tzOffsetHM).toBe(localOffsetString)// Deprecated timezone name
+        // If an unexpected string is given, the current time in UTC will be instantiated
+        expect(new Sunorhc('Singapore').tzOffsetHM).toBe('+00:00')// Deprecated timezone name
     })
 
     test('Get TimeZone offset string as the "HH:MM.SS.mmm" format', () => {
@@ -672,7 +801,8 @@ describe('Getters test', () => {
         expect(new Sunorhc('Europe/Berlin').tzOffsetFull).toBe(localOffsetString)
         expect(new Sunorhc('Asia/Tokyo').tzOffsetFull).toBe(localOffsetString)
         expect(new Sunorhc(2001,4,2,'Etc/UTC').tzOffsetFull).toBe(getLocalTZOffsetString(2001,4,2))
-        expect(new Sunorhc('Singapore').tzOffsetFull).toBe(localOffsetString)// Deprecated timezone name
+        // If an unexpected string is given, the current time in UTC will be instantiated
+        expect(new Sunorhc('Singapore').tzOffsetFull).toBe('+00:00:00.000')// Deprecated timezone name
     })
 
     test('Get the date string with era', () => {
@@ -681,18 +811,48 @@ describe('Getters test', () => {
     })
 })
 
+
+/* ----------------------------------------------------------------------------------------------------------------- */
+
+
 describe('Methods test', () => {
 
     test('"getUnixTime" method', () => {
         // Used as calculation core process of the instant value `unix` and `unixms`.
-        const opts = {firstArgument: 'timestamp'}
-        for (let _i = 0; _i < 3; _i++) {
-            let _ts = randDate().getTime(),
-                s = new Sunorhc(_ts, opts)
-            expect(s.getUnixTime()).toBe(_ts)
-            expect(s.getUnixTime('ms')).toBe(_ts)
-            expect(s.getUnixTime('s')).toBe(Math.floor(_ts / 1000))
+        const opt1 = {firstArgument: 'timestamp'},
+              opt2 = {firstArgument: 'timestamp', timezone: 'local'}
+        for (let _i = 0; _i < 10; _i++) {
+            let _suut = randDate().getTime(),// Unix Time (UTC)
+                _slut = _suut - (!hasSystemDST() ? (SYSTEM_STANDARD_TZ_OFFSET * 60000) : (SYSTEM_TZ_OFFSET * 60000)),// Unix Time (UTC)
+                su = new Sunorhc(_suut, opt1),// UTC
+                sl = new Sunorhc(_slut, opt2)// local
+            expect(su.getUnixTime()).toBe(_suut)
+            expect(su.getUnixTime('ms')).toBe(_suut)
+            expect(su.getUnixTime('s')).toBe(Math.floor(_suut / 1000))
+            // Because the UNIX Time must be UTC
+            expect(sl.getUnixTime()).toBe(_suut)
+            expect(sl.getUnixTime('ms')).toBe(_suut)
+            expect(sl.getUnixTime('s')).toBe(Math.floor(_suut / 1000))
         }
+        const s1 = new Sunorhc(-1, opt1),
+              s2 = new Sunorhc(0, opt1),
+              s3 = new Sunorhc(1, opt1),
+              s4 = new Sunorhc(0, opt2),// local
+              s5 = new Sunorhc(1970,1,1),
+              s6 = new Sunorhc(1970,1,1,'local'),// local
+              s7 = new Sunorhc(2019,10,13,12,30,0),
+              s8 = new Sunorhc(2019,10,13,12,30,0,'local')// local
+        expect(s1.getUnixTime()).toBe(-1)
+        expect(s2.getUnixTime()).toBe(0)
+        expect(s3.getUnixTime()).toBe(1)
+        expect(s4.getUnixTime()).toBe(s4.instant.$TZO)
+        expect(s5.getUnixTime()).toBe(0)
+        expect(new Sunorhc(s5.getUnixTime(), opt1).toISOString).toBe('1970-01-01T00:00:00.000Z')
+        expect(s6.getUnixTime()).toBe(new Date(1970,0,1,0,0,0,0).getTime())
+        let _chkStr = new Date(new Date(1970,0,1,0,0,0,0).getTime() - s6.instant.$TZO).toISOString()
+        expect(new Sunorhc(s6.getUnixTime(), opt2).toISOString).toBe(_chkStr.replace(/Z$/, (SYSTEM_STANDARD_TZ_OFFSET == 0 && !hasSystemDST() ? 'Z' : s6.instant.$TZOL)))
+        expect(s7.getUnixTime()).toBe(Date.UTC(2019,9,13,12,30,0))
+        expect(s8.getUnixTime()).toBe(new Date(2019,9,13,12,30,0).getTime())
     })
 
     test('"getCEEpoch" method', () => {
@@ -707,6 +867,14 @@ describe('Methods test', () => {
             expect(new Sunorhc(_y).getCEEpoch('ms')).toBe(epochTimes[_y])
             expect(new Sunorhc(_y).getCEEpoch('s')).toBe(Math.floor(epochTimes[_y] / 1000))
         }
+        const s1 = new Sunorhc(1970,1,1),
+              su = new Sunorhc(2003,6,21,3,14,78,123),
+              sl = new Sunorhc(2003,6,21,3,14,78,123,'local')
+        expect(s1.getCEEpoch()).toBe(CE_EPOCH_FROM_UNIX_EPOCH)
+        expect(su.getCEEpoch()).toBe(Date.UTC(2003,5,21,3,14,78,123) + CE_EPOCH_FROM_UNIX_EPOCH)
+        expect(new Sunorhc(su.getCEEpoch(), {firstArgument:'ce'}).toISOString).toBe(new Date(Date.UTC(2003,5,21,3,14,78,123)).toISOString())
+        expect(sl.getCEEpoch()).toBe(new Date(2003,5,21,3,14,78,123).getTime() + CE_EPOCH_FROM_UNIX_EPOCH)
+        expect(new Sunorhc(sl.getCEEpoch(), {firstArgument:'ce'}).toISOString).toBe(new Date(2003,5,21,3,14,78,123).toISOString())
     })
 
     test('"getLocaleDateElement" method', () => {
@@ -863,6 +1031,22 @@ describe('Methods test', () => {
         expect(s1.getLocaleDateElement('era', 'narrow', locale3)).toBe('2021-4-9 ├F0: CE┤')
     })
 
+    test('"getLDE" method as alias', () => {
+        // Alias of "getLocaleDateElement()" method
+        const s1 = new Sunorhc(2018,4,1,9,16,35,78),
+              s2 = new Sunorhc(2018,4,1,9,16,35,78,'local'),
+              locale = 'en-US'
+        expect(s2.getLDE('year', 'numeric', locale)).toBe(2018)
+        expect(s1.getLDE('month', 'narrow')).toBe('A')
+        expect(s1.getLDE('day', '2-digit')).toBe('01')
+        expect(s1.getLDE('weekday', 'short', locale)).toBe('Sun')
+        expect(s1.getLDE('hour', '2-digit')).toBe('09')
+        expect(s2.getLDE('minute', 'numeric')).toBe(16)
+        expect(s2.getLDE('second', 'numeric')).toBe(35)
+        expect(s2.getLDE('millisecond', 'zerofill')).toBe('078')
+        expect(s2.getLDE('era', 'long', locale)).toBe('4 1, 2018 Anno Domini')
+    })
+
     test('"format" method', () => {
         // Returns the instantiated date in a formatted format by PHP's date_format()-like formatter.
         const s1 = new Sunorhc(1, 2, 3, 4, 5, 6, 7),// C.E. 1 & all elements 1-digit & Saturday
@@ -874,11 +1058,16 @@ describe('Methods test', () => {
               s7 = new Sunorhc(2011, 3, 6, 14, 'local'),// Sunday & local timezone
               s8 = new Sunorhc(1983, 7, 15, 'Asia/Tokyo'),
               s9 = new Sunorhc(1),// C.E. 1 first datetime
-              sysTzOffset = String(new Date().getTimezoneOffset() * 60 * 1000),
+              s10 = new Sunorhc(2000, 2, 15),// leap day
               getLocalTZOffsetString = (...args) => {
                 let date = args.length == 0 ? NOW : new Date(...args),
-                    _m = date.toString().match(/\sGMT(-|\+)(.*)\s/)
-                return _m[1] + _m[2].slice(0, 2) + ':' + _m[2].slice(2)
+                    _m   = date.toString().match(/\sGMT(-|\+)(.*)\s/),
+                    _hh  = _m[2].slice(0, 2),
+                    _mm  = _m[2].slice(2)
+                if (SYSTEM_IS_DST) {
+                    _hh = (parseInt(_hh, 10) + (SYSTEM_DST_TZ_OFFSET / 60)).toString().padStart(2, '0')
+                }
+                return _m[1] + _hh + ':' + _mm
               },
               localOffsetString = getLocalTZOffsetString()
         
@@ -888,6 +1077,7 @@ describe('Methods test', () => {
         expect(s4.format('Y-m-d H:i:s.v')).toBe('1970-01-01 00:00:00.000')
         expect(s5.format('Y-m-d H:i:s.v\\Z')).toBe('1996-10-09 03:04:56.789Z')
         expect(s6.format('Y-m-dTH:i:s')).toBe('2021-03-23T12:34:45')
+        expect(s7.format('Y-m-d H:i:s')).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/)// local timezone date
         // Year
         expect(s1.format('Y')).toBe('1')
         expect(s2.format('Y')).toBe('46')
@@ -897,6 +1087,10 @@ describe('Methods test', () => {
         expect(s2.format('y')).toBe('46')
         expect(s3.format('y')).toBe('94')
         expect(s4.format('y')).toBe('70')
+        expect(s1.format('f')).toBe('0001')
+        expect(s2.format('f')).toBe('0046')
+        expect(s3.format('f')).toBe('0794')
+        expect(s4.format('f')).toBe('1970')
         expect(s5.format('L')).toBe('1')
         expect(s5.format('L')).toBeTruthy()
         expect(s6.format('L')).toBe('0')
@@ -918,6 +1112,10 @@ describe('Methods test', () => {
         expect(s2.format('n')).toBe('12')
         expect(s5.format('n')).toBe('10')
         expect(s6.format('n')).toBe('3')
+        expect(s1.format('t')).toBe('28')
+        expect(s2.format('t')).toBe('31')
+        expect(s3.format('t')).toBe('30')
+        expect(s10.format('t')).toBe('29')
         // Week
         expect(s1.format('W')).toBe('5')
         expect(s2.format('W')).toBe('53')
@@ -981,10 +1179,10 @@ describe('Methods test', () => {
         expect(s3.format('H')).toBe('13')
         expect(s2.format('H')).toBe('23')
         // Minute
-        expect(s1.format('I')).toBe('5')// 1-digit minute
-        expect(s6.format('I')).toBe('34')// 2-digit minute
-        expect(s4.format('I')).toBe('0')
-        expect(s2.format('I')).toBe('59')
+        expect(s1.format('C')).toBe('5')// 1-digit minute
+        expect(s6.format('C')).toBe('34')// 2-digit minute
+        expect(s4.format('C')).toBe('0')
+        expect(s2.format('C')).toBe('59')
         expect(s1.format('i')).toBe('05')// 1-digit minute
         expect(s6.format('i')).toBe('34')// 2-digit minute
         expect(s4.format('i')).toBe('00')
@@ -1007,48 +1205,61 @@ describe('Methods test', () => {
         expect(s6.format('v')).toBe('077')// 2-digit millisecond
         expect(s3.format('v')).toBe('123')// 3-digit millisecond
         expect(s4.format('v')).toBe('000')
-        // TimeZone
+        // TimeZone Name
         expect(s1.format('e')).toBe('UTC')
-        expect(s7.format('e')).toBe('local')
+        expect(s7.format('e')).toBe(SYSTEM_STANDARD_TZ_OFFSET == 0 && !hasSystemDST() ? 'UTC' : 'local')
         expect(s8.format('e')).toBe('Asia/Tokyo')
+        // TimeZone Offset
         expect(s1.format('Z')).toBe('0')
-        expect(s7.format('Z')).toBe(sysTzOffset)
-        expect(s8.format('Z')).toBe(sysTzOffset)
-        // Full Datetime
+        expect(s7.format('Z')).toBe((s7.instant.$TZO / 1000).toString())
+        expect(s8.format('Z')).toBe((s8.instant.$TZO / 1000).toString())
+        // DST
+        expect(new Sunorhc(NOW).format('I')).toBe('0')
+        expect(new Sunorhc(NOW, 'local').format('I')).toBe(SYSTEM_IS_DST ? '1' : '0')
+        expect(s5.format('I')).toMatch(/^[01]$/)
+        expect(s7.format('I')).toMatch(/^[01]$/)
+        // Full Datetime (ISO 8601)
         expect(s1.format('c')).toBe('0001-02-03T04:05:06.007Z')
         expect(s2.format('c')).toBe('0046-12-31T23:59:59.099Z')
         expect(s3.format('c')).toBe('0794-11-18T13:10:22.123Z')
         expect(s4.format('c')).toBe('1970-01-01T00:00:00.000Z')
-        expect(s7.format('c')).toBe('2011-03-06T14:00:00.000' + localOffsetString)// Local timezone date
+        expect(s7.format('c')).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}(Z|[+-]\d{2}:\d{2})$/)// Local timezone date
+        // Full Datetime (RFC 2822)
         expect(s1.format('r')).toBe('Sat, 03 Feb 0001 04:05:06 GMT')
         expect(s2.format('r')).toBe('Mon, 31 Dec 0046 23:59:59 GMT')
         expect(s3.format('r')).toBe('Fri, 18 Nov 0794 13:10:22 GMT')
         expect(s4.format('r')).toBe('Thu, 01 Jan 1970 00:00:00 GMT')
-        expect(s7.format('r')).toBe('Sun, 06 Mar 2011 14:00:00 ' + localOffsetString.replace(':', ''))// Local timezone date
+        expect(s7.format('r')).toMatch(/^Sun, \d{2} Mar \d{4} \d{2}:\d{2}:\d{2} (GMT|[+-]\d{4})$/)// Local timezone date
+        // Unix Time sec.
         expect(s9.format('U')).toBe('-62135596800')
+        expect(parseInt(s9.format('U'), 10)).toBe(CE_EPOCH_UNIX / 1000)
         expect(s1.format('U')).toBe('-62132730894')
         expect(s2.format('U')).toBe('-60683990401')
         expect(s3.format('U')).toBe('-37083178178')
-        expect(s4.format('U')).toBe('0')
-        expect(s7.format('U')).toBe('1299387600')
+        expect(s4.format('U')).toBe('0')// 1970-01-01T00:00:00+00:00 (UTC) <- s4 = new Sunorhc(1970, 1, 1, 0, 0, 0, 0)
+        let s7_ut_from_local = new Date(2011,2,6,14,0,0).getTime()//Date.UTC(2011,2,6,14,0,0) + (SYSTEM_TZ_OFFSET * 60000)
+        expect(s7.format('U')).toBe((s7_ut_from_local / 1000).toString())
+        // Unix Time ms.
         expect(s9.format('u')).toBe('-62135596800000')
         expect(s1.format('u')).toBe('-62132730893993')
         expect(s2.format('u')).toBe('-60683990400901')
         expect(s3.format('u')).toBe('-37083178177877')
         expect(s4.format('u')).toBe('0')
-        expect(s7.format('u')).toBe('1299387600000')
+        expect(s7.format('u')).toBe(s7_ut_from_local.toString())
+        // CE Epoch Times sec.
         expect(s9.format('B')).toBe('0')
         expect(s1.format('B')).toBe('2865906')
         expect(s2.format('B')).toBe('1451606399')
         expect(s3.format('B')).toBe('25052418622')
         expect(s4.format('B')).toBe('62135596800')
-        expect(s7.format('B')).toBe('63435016800')
+        expect(s7.format('B')).toBe(((s7_ut_from_local + CE_EPOCH_FROM_UNIX_EPOCH) / 1000).toString())// local timezone
+        // CE Epoch Times ms.
         expect(s9.format('b')).toBe('0')
         expect(s1.format('b')).toBe('2865906007')
         expect(s2.format('b')).toBe('1451606399099')
         expect(s3.format('b')).toBe('25052418622123')
         expect(s4.format('b')).toBe('62135596800000')
-        expect(s7.format('b')).toBe('63435016800000')
+        expect(s7.format('b')).toBe((s7_ut_from_local + CE_EPOCH_FROM_UNIX_EPOCH).toString())// local timezone
         // escape formatter
         expect(s1.format('.v\\Z')).toBe('.007Z')
         expect(s8.format('\\Y\\Y\\Y\\Y: Y')).toBe('YYYY: 1983')
@@ -1065,7 +1276,11 @@ describe('Methods test', () => {
         // from Zoned
         expect(Object.keys(sz.getUTC().instant).sort()).toEqual(INSTANT_PROPS)
         expect(sz.getUTC().timezone).toBe('UTC')
-        expect(sz.toISOString).toBe(NOW_LOCAL)
+        if (SYSTEM_STANDARD_TZ_OFFSET == 0 && !hasSystemDST()) {
+            expect(sz.toISOString).toBe(NOW_UTC)
+        } else {
+            expect(sz.toISOString).toBe(NOW_LOCAL)
+        }
         expect(sz.getUTC().toISOString).toBe(NOW_UTC)
     })
 
@@ -1078,7 +1293,7 @@ describe('Methods test', () => {
         expect(su.toUTCDate().toISOString()).toBe(NOW_UTC)
         expect(su.toUTCDate().toString()).toStrictEqual(NOW.toString())
         // from Zoned
-        expect(sz.toISOString).toBe(NOW_LOCAL)
+        expect(sz.toISOString).toBe(SYSTEM_STANDARD_TZ_OFFSET == 0 && !hasSystemDST() ? NOW_UTC : NOW_LOCAL)
         expect(sz.toUTCDate() instanceof Date).toBeTruthy()
         expect(sz.toUTCDate().toISOString()).toBe(NOW_UTC)
         expect(sz.toUTCDate().toString()).toStrictEqual(NOW.toString())
@@ -1090,13 +1305,13 @@ describe('Methods test', () => {
               sz = new Sunorhc(NOW, 'local')
         // from UTC
         expect(Object.keys(su.getZoned().instant).sort()).toEqual(INSTANT_PROPS)
-        expect(su.getZoned().timezone).toBe('local')
+        expect(su.getZoned().timezone).toBe(SYSTEM_STANDARD_TZ_OFFSET == 0 && !hasSystemDST() ? 'UTC' : 'local')
         expect(su.toISOString).toBe(NOW_UTC)
-        expect(su.getZoned().toISOString).toBe(NOW_LOCAL)
+        expect(su.getZoned().toISOString).toBe(SYSTEM_STANDARD_TZ_OFFSET == 0 && !hasSystemDST() ? NOW_UTC : NOW_LOCAL)
         // from Zoned
         expect(Object.keys(sz.getZoned().instant).sort()).toEqual(INSTANT_PROPS)
-        expect(sz.getZoned().timezone).toBe('local')
-        expect(sz.getZoned().toISOString).toBe(NOW_LOCAL)
+        expect(sz.getZoned().timezone).toBe(SYSTEM_STANDARD_TZ_OFFSET == 0 && !hasSystemDST() ? 'UTC' : 'local')
+        expect(sz.getZoned().toISOString).toBe(SYSTEM_STANDARD_TZ_OFFSET == 0 && !hasSystemDST() ? NOW_UTC : NOW_LOCAL)
     })
 
     test('"toZonedDate" method', () => {
@@ -1206,7 +1421,7 @@ describe('Methods test', () => {
               c3 = '1999-12-25T00:00:00.000',// just 1 week before
               c4 = '1999-12-01T00:00:00.000',// comparison with date on the past from the base date
               c5 = '0001-01-01T00:00:00.000',
-              c6 = '+275760-09-13T00:00:00.000',
+              c6 = '+275760-09-13T00:00:00.000Z',
               c7 = '2000-06-01T00:00:00.000',
               c8 = '1999-06-01T00:00:00.000',
               c9 = '2000-03-01T00:00:00.000',
@@ -1248,25 +1463,26 @@ describe('Methods test', () => {
         expect(s1.interval(c3, 'day')).toBe(-7)
         expect(s1.interval(c4, 'day')).toBe(-31)
         // hour
-        expect(s1.interval(c1, 'hours')).toBe(229)
+        expect(s1.interval(c1, 'hours')).toBe(229)// = 9.542 days
         expect(s1.interval(c1, 'hour')).toBe(229)
-        expect(s1.interval(c2, 'hour')).toBe(168)
+        expect(s1.interval(c2, 'hour')).toBe(168)// = 7 days
         expect(s1.interval(c3, 'hour')).toBe(-168)
-        expect(s1.interval(c4, 'hour')).toBe(-744)
+        expect(s1.interval(c4, 'hour')).toBe(-744)// = -31 days
+        expect(s2.interval(c6, 'hour')).toBe(2417259888)
         // minute
-        expect(s1.interval(c1, 'minutes')).toBe(13715)
+        expect(s1.interval(c1, 'minutes')).toBe(13715)// = 228.58 hours
         expect(s1.interval(c1, 'minute')).toBe(13715)
         expect(s1.interval(c1, 'min')).toBe(13715)
-        expect(s1.interval(c2, 'min')).toBe(10080)
+        expect(s1.interval(c2, 'min')).toBe(10080)// = 168 hours
         expect(s1.interval(c3, 'min')).toBe(-10080)
-        expect(s1.interval(c4, 'min')).toBe(-44640)
+        expect(s1.interval(c4, 'min')).toBe(-44640)// = -744 hours
         // second
-        expect(s1.interval(c1, 'seconds')).toBe(822886)
+        expect(s1.interval(c1, 'seconds')).toBe(822886)// = 13714.77 minutes
         expect(s1.interval(c1, 'second')).toBe(822886)
         expect(s1.interval(c1, 'sec')).toBe(822886)
-        expect(s1.interval(c2, 'sec')).toBe(604800)
+        expect(s1.interval(c2, 'sec')).toBe(604800)// = 10080 minutes
         expect(s1.interval(c3, 'sec')).toBe(-604800)
-        expect(s1.interval(c4, 'sec')).toBe(-2678400)
+        expect(s1.interval(c4, 'sec')).toBe(-2678400)// = 44640 minutes
         // millisecond
         expect(s1.interval(c1, 'milliseconds')).toBe(822885678)
         expect(s1.interval(c1, 'millisecond')).toBe(822885678)
@@ -1275,7 +1491,7 @@ describe('Methods test', () => {
         expect(s1.interval(c3, 'ms')).toBe(-604800000)
         expect(s1.interval(c4, 'ms')).toBe(-2678400000)
         expect(s1.interval(c5, 'ms')).toBe(-63082281600000)
-        expect(s2.interval(c6, 'ms')).toBe(8702135564400000)// epoch ms to max Datetime from CE 1 first datetime < Number.MAX_SAFE_INTEGER (9007199254740991)
+        expect(s2.interval(c6, 'ms')).toBe(8702135596800000)// new Sunorhc(8702135596800000,{firstArgument: 'ce'}).toISOString: 275760-09-13T00:00:00.000Z === c6
     })
 
     test('"clone" method', () => {
@@ -1306,6 +1522,9 @@ describe('Methods test', () => {
         expect(new Sunorhc(2019,12,31).getWeekOfYear()).toBe(53)
         expect(new Sunorhc(2020,1,1).getWeekOfYear()).toBe(1)
         expect(new Sunorhc(2020,1,8).getWeekOfYear()).toBe(2)
+        expect(new Sunorhc(2019,12,31,'local').getWeekOfYear()).toBe(53)
+        expect(new Sunorhc(2020,1,1,'local').getWeekOfYear()).toBe(1)
+        expect(new Sunorhc(2020,1,8,'local').getWeekOfYear()).toBe(2)
     })
 
     test('"getDaysInYear" method', () => {
@@ -1314,8 +1533,7 @@ describe('Methods test', () => {
             expect(new Sunorhc(_y).getDaysInYear()).toBe((_y % 4 == 0 ? 366: 365))
         }
         expect(new Sunorhc(2020, 12, 31, 24).getDaysInYear()).toBe(365)
-        expect(new Sunorhc().getDaysInYear(new Date(1998, 7, 6, 11, 22, 33))).toBe(365)
-        expect(new Sunorhc().getDaysInYear(new Date(2000, 7, 7))).toBe(366)
+        expect(new Sunorhc(2021, 1, 1, 'local').getDaysInYear()).toBe(365)
     })
 
     test('"getDaysInMonth" method', () => {
@@ -1342,99 +1560,216 @@ describe('Methods test', () => {
         // Get cumulative days in year untill current day from first day of year.
         for (let _d = 1; _d <= 366; _d++) {
             expect(new Sunorhc(2020, 1, _d).getCumulativeDays()).toBe(_d - 1)
+            expect(new Sunorhc(2020, 1, _d, 'local').getCumulativeDays()).toBe(_d - 1)
         }
-        expect(new Sunorhc().getCumulativeDays( new Date(Date.UTC(1998, 0, 1)) )).toBe(0)// UTC
-        expect(new Sunorhc().getCumulativeDays( new Date('1998-01-01T00:00:00.000+09:00') )).toBe(364)// local
-        expect(new Sunorhc().getCumulativeDays( new Date('1998-01-01T09:00:00.000+09:00') )).toBe(0)// local
-        expect(new Sunorhc().getCumulativeDays( new Date('1998-02-03T00:00:00Z') )).toBe(33)// UTC
-        expect(new Sunorhc().getCumulativeDays( new Date('1999-12-31T23:59:59.999Z') )).toBe(364)// UTC
-        expect(new Sunorhc().getCumulativeDays( new Date('2000-12-31T00:00:00Z') )).toBe(365)// UTC
     })
 
     test('"getWeekdayIndex" method', () => {
         // Get the numeric index of weekday depended on specified format.
         // 2021-07-05: Monday ~ 2021-07-11: Sunday
-        expect(new Sunorhc(2021,7,5).getWeekdayIndex()).toBe(1)
-        expect(new Sunorhc(2021,7,5).getWeekdayIndex('iso8601')).toBe(1)
-        expect(new Sunorhc(2021,7,6).getWeekdayIndex()).toBe(2)
-        expect(new Sunorhc(2021,7,6).getWeekdayIndex('iso8601')).toBe(2)
-        expect(new Sunorhc(2021,7,7).getWeekdayIndex()).toBe(3)
-        expect(new Sunorhc(2021,7,7).getWeekdayIndex('iso8601')).toBe(3)
-        expect(new Sunorhc(2021,7,8).getWeekdayIndex()).toBe(4)
-        expect(new Sunorhc(2021,7,8).getWeekdayIndex('iso8601')).toBe(4)
-        expect(new Sunorhc(2021,7,9).getWeekdayIndex()).toBe(5)
-        expect(new Sunorhc(2021,7,9).getWeekdayIndex('iso8601')).toBe(5)
-        expect(new Sunorhc(2021,7,10).getWeekdayIndex()).toBe(6)
-        expect(new Sunorhc(2021,7,10).getWeekdayIndex('iso8601')).toBe(6)
-        expect(new Sunorhc(2021,7,11).getWeekdayIndex()).toBe(0)
-        expect(new Sunorhc(2021,7,11).getWeekdayIndex('iso8601')).toBe(7)
+        // numeric weekday: 1 (Monday) - 6 (Saturday), 0 (Sunday)
+        // ISO-8601 format numeric weekday: 1 (Monday) - 7 (Sunday)
+        for (let _i = 1; _i <= 7; _i++) {
+            expect(new Sunorhc(2021,7,4 + _i).getWeekdayIndex()).toBe(_i == 7 ? 0 : _i)
+            expect(new Sunorhc(2021,7,4 + _i).getWeekdayIndex('iso8601')).toBe(_i)
+            expect(new Sunorhc(2021,7,4 + _i,'local').getWeekdayIndex()).toBe(_i == 7 ? 0 : _i)
+            expect(new Sunorhc(2021,7,4 + _i,'local').getWeekdayIndex('iso8601')).toBe(_i)
+        }
         expect(new Sunorhc(2021,7,12).getWeekdayIndex()).toBe(1)
         expect(new Sunorhc(2021,7,12).getWeekdayIndex('iso8601')).toBe(1)
+        expect(new Sunorhc(2021,7,12,'local').getWeekdayIndex()).toBe(1)
+        expect(new Sunorhc(2021,7,12,'local').getWeekdayIndex('iso8601')).toBe(1)
     })
 
     test('"getISO" method', () => {
         // Get the ISO 8601 string of date and time depended on specified format.
-        const p1 = [2021,7,14,8,12,43,478],
-              p2 = [2021,6,14,8,12,43,478],
-              s1 = new Sunorhc(...p1),// UTC
-              s2 = new Sunorhc(...p1,'local'),// local
+        const s1 = new Sunorhc(NOW),// UTC
+              s2 = new Sunorhc(NOW, 'local'),// local
+              REGEX_ISO_UTC = /^-?\d{4,}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/,
+              REGEX_ISO_LOCAL = /^-?\d{4,}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}[+-]\d{2}:\d{2}$/,
+              REGEX_ISO_DATE = /^-?\d{4,}-\d{2}-\d{2}$/,
+              REGEX_ISO_WEEK = /^-?\d{4,}-W\d{1,2}$/,
+              REGEX_ISO_WEEKDAY = /^-?\d{4,}-W\d{1,2}-\d{1}$/,
+              REGEX_ISO_ORDINAL = /^-?\d{4,}-\d{1,3}$/,
+              REGEX_ISO_TIME = /^\d{2}:\d{2}:\d{2}\.\d{3}$/,
+              REGEX_ISO_OFFSET = /^[+-]\d{2}:\d{2}$/,
               getLocalTZOffsetString = (...args) => {
                 let date = args.length == 0 ? NOW : new Date(...args),
                     _m = date.toString().match(/\sGMT(-|\+)(.*)\s/)
                 return _m[1] + _m[2].slice(0, 2) + ':' + _m[2].slice(2)
               },
               localOffsetString = getLocalTZOffsetString()
+        let _p = null
         // format: none or "full"
-        expect(s1.getISO()).toBe('2021-07-14T08:12:43.478Z')
-        expect(s1.getISO('full')).toBe('2021-07-14T08:12:43.478Z')
-        expect(s2.getISO()).toBe(convLocalISOString(new Date(...p2)))
-        expect(s2.getISO('full')).toBe(convLocalISOString(new Date(...p2)))
+        expect(s1.getISO()).toMatch(REGEX_ISO_UTC)
+        expect(s1.getISO('full')).toMatch(REGEX_ISO_UTC)
+        expect(s1.getISO()).toBe(NOW_UTC)
+        expect(s2.getISO()).toMatch(SYSTEM_STANDARD_TZ_OFFSET == 0 && !hasSystemDST() ? REGEX_ISO_UTC : REGEX_ISO_LOCAL)
+        expect(s2.getISO('full')).toMatch(SYSTEM_STANDARD_TZ_OFFSET == 0 && !hasSystemDST() ? REGEX_ISO_UTC : REGEX_ISO_LOCAL)
+        expect(s2.getISO()).toBe(SYSTEM_STANDARD_TZ_OFFSET == 0 && !hasSystemDST() ? NOW_UTC : NOW_LOCAL)
         // format: "date"
-        expect(s1.getISO('date')).toBe('2021-07-14')
-        expect(s2.getISO('date')).toBe('2021-07-14')
+        expect(s1.getISO('date')).toMatch(REGEX_ISO_DATE)
+        expect(s2.getISO('date')).toMatch(REGEX_ISO_DATE)
+        expect(s1.getISO('date')).toBe(`${NOW.getUTCFullYear()}-${(NOW.getUTCMonth() + 1).toString().padStart(2, '0')}-${NOW.getUTCDate().toString().padStart(2, '0')}`)
+        expect(s2.getISO('date')).toBe(`${NOW.getFullYear()}-${(NOW.getMonth() + 1).toString().padStart(2, '0')}-${NOW.getDate().toString().padStart(2, '0')}`)
         // format: "week"
-        expect(s1.getISO('week')).toBe('2021-W28')
-        expect(s2.getISO('week')).toBe('2021-W28')
+        expect(s1.getISO('week')).toMatch(REGEX_ISO_WEEK)
+        expect(s2.getISO('week')).toMatch(REGEX_ISO_WEEK)
+        expect(s1.getISO('week')).toBe(`${NOW.getUTCFullYear()}-W${s1.instant.$W}`)
+        expect(s2.getISO('week')).toBe(`${NOW.getFullYear()}-W${s2.instant.$W}`)
         // format: "weekday"
-        expect(s1.getISO('weekday')).toBe('2021-W28-3')
-        expect(s2.getISO('weekday')).toBe('2021-W28-3')
+        expect(s1.getISO('weekday')).toMatch(REGEX_ISO_WEEKDAY)
+        expect(s2.getISO('weekday')).toMatch(REGEX_ISO_WEEKDAY)
+        expect(s1.getISO('weekday')).toBe(`${NOW.getUTCFullYear()}-W${s1.instant.$W}-${s1.instant.$WD}`)
+        expect(s2.getISO('weekday')).toBe(`${NOW.getFullYear()}-W${s2.instant.$W}-${s2.instant.$WD}`)
         // format: "ordinal"
-        expect(s1.getISO('ordinal')).toBe('2021-194')
-        expect(s2.getISO('ordinal')).toBe('2021-194')
+        expect(s1.getISO('ordinal')).toMatch(REGEX_ISO_ORDINAL)
+        expect(s2.getISO('ordinal')).toMatch(REGEX_ISO_ORDINAL)
+        expect(s1.getISO('ordinal')).toBe(`${NOW.getUTCFullYear()}-${s1.instant.$O}`)
+        expect(s2.getISO('ordinal')).toBe(`${NOW.getFullYear()}-${s2.instant.$O}`)
         // format: "time"
-        expect(s1.getISO('time')).toBe('08:12:43.478')
-        expect(s2.getISO('time')).toBe('08:12:43.478')
+        expect(s1.getISO('time')).toMatch(REGEX_ISO_TIME)
+        expect(s2.getISO('time')).toMatch(REGEX_ISO_TIME)
+        expect(s1.getISO('time')).toBe(`${NOW.getUTCHours().toString().padStart(2, '0')}:${NOW.getUTCMinutes().toString().padStart(2, '0')}:${NOW.getUTCSeconds().toString().padStart(2, '0')}.${NOW.getUTCMilliseconds().toString().padStart(3, '0')}`)
+        expect(s2.getISO('time')).toBe(`${NOW.getHours().toString().padStart(2, '0')}:${NOW.getMinutes().toString().padStart(2, '0')}:${NOW.getSeconds().toString().padStart(2, '0')}.${NOW.getMilliseconds().toString().padStart(3, '0')}`)
         // format: "offset"
+        expect(s1.getISO('offset')).toMatch(REGEX_ISO_OFFSET)
+        expect(s2.getISO('offset')).toMatch(REGEX_ISO_OFFSET)
         expect(s1.getISO('offset')).toBe('+00:00')
         expect(s2.getISO('offset')).toBe(localOffsetString)
         // format: "noz"
-        expect(s1.getISO('noz')).toBe('2021-07-14T08:12:43.478+00:00')
-        expect(s2.getISO('noz')).toBe(convLocalISOString(new Date(...p2)))
+        expect(s1.getISO('noz')).toMatch(REGEX_ISO_LOCAL)
+        expect(s2.getISO('noz')).toMatch(REGEX_ISO_LOCAL)
+        expect(s1.getISO('noz')).toMatch(/\+00:00$/)
     })
 
     test('"getRFC" method', () => {
         // Get the RFC xxxx string as legacy date and time format.
-        const p1 = [2021,7,14,8,12,43,478],
-              p2 = [2021,6,14,8,12,43,478],
-              s1 = new Sunorhc(...p1),// UTC
-              s2 = new Sunorhc(...p1,'local'),// local
-              getLocalTZOffsetString = (...args) => {
-                let date = args.length == 0 ? NOW : new Date(...args),
-                    _m = date.toString().match(/\sGMT(-|\+)(.*)\s/)
-                return _m[1] + _m[2].slice(0, 2) + ':' + _m[2].slice(2)
-              },
-              tzOffsetStr1 = getLocalTZOffsetString(),
-              tzOffsetStr2 = getLocalTZOffsetString().replace(':', '')
-        // format: none
-        expect(s1.getRFC()).toBe('Wed Jul 14 2021 08:12:43 GMT+0000 (UTC)')
-        expect(s2.getRFC()).toBe(`Wed Jul 14 2021 08:12:43 GMT${tzOffsetStr2} (GMT${tzOffsetStr1})`)
-        // format: 2822
-        expect(s1.getRFC(2822)).toBe('Wed, 14 Jul 2021 08:12:43 GMT')
-        expect(s2.getRFC(2822)).toBe(`Wed, 14 Jul 2021 08:12:43 ${tzOffsetStr2}`)
-        // format: 3339
-        expect(s1.getRFC(3339)).toBe('2021-07-14T08:12:43+0000')
-        expect(s2.getRFC(3339)).toBe(`2021-07-14T08:12:43${tzOffsetStr2}`)
+        const s1 = new Sunorhc(NOW),// UTC
+              s2 = new Sunorhc(NOW, 'local'),// local
+              REGEX_WD = /^(Mon|Tue|Wed|Thu|Fri|Sat|Sun),?$/,
+              REGEX_MO = /^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)$/,
+              REGEX_39 = /^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2}:\d{2})(.*)$/,
+              getLocalTZOffsetString = (format=true) => {
+                let _m = NOW.toString().match(format ? /\s(GMT[-+].*)\s/ : /\s(\(.*\))$/)
+                return _m[1]
+            }
+        // format: none -> "Wed Jul 14 2021 08:12:43 GMT+0000 (UTC)"
+        let s1RFCStr = s1.getRFC(),
+            s2RFCStr = s2.getRFC(),
+            s1Parsed = s1RFCStr.split(' '),
+            s2Parsed = s2RFCStr.split(' ')
+        expect(s1Parsed[0]).toMatch(REGEX_WD)
+        expect(s1Parsed[1]).toMatch(REGEX_MO)
+        expect(s1Parsed[2]).toBe(NOW.getUTCDate().toString())
+        expect(s1Parsed[3]).toBe(NOW.getUTCFullYear().toString())
+        expect(s1Parsed[4]).toMatch(/^\d{2}:\d{2}:\d{2}$/)
+        expect(s1Parsed[5]).toBe('GMT+0000')
+        expect(s1Parsed[6]).toBe('(UTC)')
+        expect(s2Parsed[0]).toMatch(REGEX_WD)
+        expect(s2Parsed[1]).toMatch(REGEX_MO)
+        expect(s2Parsed[2]).toBe(NOW.getDate().toString())
+        expect(s2Parsed[3]).toBe(NOW.getFullYear().toString())
+        expect(s2Parsed[4]).toMatch(/^\d{2}:\d{2}:\d{2}$/)
+        if (SYSTEM_STANDARD_TZ_OFFSET == 0 && !hasSystemDST()) {
+            expect(s2Parsed[5]).toBe('GMT+0000')
+            expect(s2Parsed[6]).toBe('(UTC)')
+        } else {
+            expect(s2Parsed[5]).toBe(getLocalTZOffsetString())
+            expect(s2Parsed[6]).toBe(getLocalTZOffsetString(false))
+        }
+        // format: 2822 -> "Wed, 14 Jul 2021 08:12:43 GMT"
+        s1RFCStr = s1.getRFC(2822),
+        s2RFCStr = s2.getRFC(2822),
+        s1Parsed = s1RFCStr.split(' '),
+        s2Parsed = s2RFCStr.split(' ')
+        expect(s1Parsed[0]).toMatch(REGEX_WD)
+        expect(s1Parsed[1]).toBe(NOW.getUTCDate().toString())
+        expect(s1Parsed[2]).toMatch(REGEX_MO)
+        expect(s1Parsed[3]).toBe(NOW.getUTCFullYear().toString())
+        expect(s1Parsed[4]).toMatch(/^\d{2}:\d{2}:\d{2}$/)
+        expect(s1Parsed[5]).toBe('GMT')
+        expect(s2Parsed[0]).toMatch(REGEX_WD)
+        expect(s2Parsed[1]).toBe(NOW.getDate().toString())
+        expect(s2Parsed[2]).toMatch(REGEX_MO)
+        expect(s2Parsed[3]).toBe(NOW.getFullYear().toString())
+        expect(s2Parsed[4]).toMatch(/^\d{2}:\d{2}:\d{2}$/)
+        if (SYSTEM_STANDARD_TZ_OFFSET == 0 && !hasSystemDST()) {
+            expect(s2Parsed[5]).toBe('GMT')
+        } else {
+            expect(s2Parsed[5]).toBe(getLocalTZOffsetString().replace('GMT', ''))
+        }
+        // format: 3339 -> "2021-07-14T08:12:43+0000"
+        s1RFCStr = s1.getRFC(3339),
+        s2RFCStr = s2.getRFC(3339)
+        let s1Matches = s1RFCStr.match(REGEX_39),
+            s2Matches = s2RFCStr.match(REGEX_39)
+        expect(s1RFCStr).toBe(s1Matches[0])
+        expect(s1Matches[1]).toBe(`${NOW.getUTCFullYear()}-${(NOW.getUTCMonth() + 1).toString().padStart(2, '0')}-${NOW.getUTCDate().toString().padStart(2, '0')}`)
+        expect(s1Matches[2]).toBe(`${NOW.getUTCHours().toString().padStart(2, '0')}:${NOW.getUTCMinutes().toString().padStart(2, '0')}:${NOW.getUTCSeconds().toString().padStart(2, '0')}`)
+        expect(s1Matches[3]).toBe('+0000')
+        expect(s2RFCStr).toBe(s2Matches[0])
+        expect(s2Matches[1]).toBe(`${NOW.getFullYear()}-${(NOW.getMonth() + 1).toString().padStart(2, '0')}-${NOW.getDate().toString().padStart(2, '0')}`)
+        expect(s2Matches[2]).toBe(`${NOW.getHours().toString().padStart(2, '0')}:${NOW.getMinutes().toString().padStart(2, '0')}:${NOW.getSeconds().toString().padStart(2, '0')}`)
+        if (SYSTEM_STANDARD_TZ_OFFSET == 0 && !hasSystemDST()) {
+            expect(s2Matches[3]).toBe('+0000')
+        } else {
+            expect(s2Matches[3]).toBe(getLocalTZOffsetString().replace('GMT', ''))
+        }
     })
 
+    test('"hasDST" method', () => {
+        // Whether or not the timezone to which the instance's primitive datatime belongs observes DST.
+        const su = new Sunorhc(),
+              sl = new Sunorhc('local')
+        expect(su.hasDST()).toBe(false)
+        expect(sl.hasDST()).toBe(hasSystemDST())
+    })
+
+    test('"isDST" method', () => {
+        // Whether the primitive datetime of the instance is during DST or not.
+        const su = new Sunorhc(),
+              sl = new Sunorhc('local')
+        expect(su.isDST()).toBe(false)
+        if (hasSystemDST()) {
+            expect(sl.isDST()).toBe(SYSTEM_TZ_OFFSET !== SYSTEM_STANDARD_TZ_OFFSET)
+        } else {
+            expect(sl.isDST()).toBe(false)
+        }
+    })
+
+    test('"getDSTOffset" method', () => {
+        // Get the time difference when the instance's timezone observes DST.
+        const su = new Sunorhc(),
+              sl = new Sunorhc('local')
+        expect(su.getDSTOffset()).toBe(0)
+        expect(su.getDSTOffset('Milliseconds')).toBe(0)
+        expect(su.getDSTOffset('millisecond')).toBe(0)
+        expect(su.getDSTOffset('ms')).toBe(0)
+        expect(su.getDSTOffset('Seconds')).toBe(0)
+        expect(su.getDSTOffset('second')).toBe(0)
+        expect(su.getDSTOffset('sec')).toBe(0)
+        expect(su.getDSTOffset('s')).toBe(0)
+        expect(su.getDSTOffset('Minutes')).toBe(0)
+        expect(su.getDSTOffset('minutes')).toBe(0)
+        expect(su.getDSTOffset('min')).toBe(0)
+        expect(su.getDSTOffset('Hours')).toBe(0)
+        expect(su.getDSTOffset('hour')).toBe(0)
+        expect(su.getDSTOffset('h')).toBe(0)
+        if (hasSystemDST()) {
+            const relativeDSTOffset = SYSTEM_TZ_OFFSET - SYSTEM_STANDARD_TZ_OFFSET
+            expect(sl.getDSTOffset()).toBe(relativeDSTOffset * 60 * 1000)
+            expect(sl.getDSTOffset('ms')).toBe(relativeDSTOffset * 60 * 1000)
+            expect(sl.getDSTOffset('s')).toBe(relativeDSTOffset * 60)
+            expect(sl.getDSTOffset('min')).toBe(relativeDSTOffset)
+            expect(sl.getDSTOffset('h')).toBe(relativeDSTOffset / 60)
+        } else {
+            expect(sl.getDSTOffset()).toBe(0)
+            expect(sl.getDSTOffset('ms')).toBe(0)
+            expect(sl.getDSTOffset('s')).toBe(0)
+            expect(sl.getDSTOffset('min')).toBe(0)
+            expect(sl.getDSTOffset('h')).toBe(0)
+        }
+    })
 })
 

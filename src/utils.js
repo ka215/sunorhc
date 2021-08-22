@@ -84,6 +84,11 @@ const mergeOptions = (defaults, settings) => {
                             }
                         }
                         break
+                    case 'verbose':
+                        if (vType === 'boolean') {
+                            finalOpts[setKey] = setVal
+                        }
+                        break
                     default:
                         // Cannot be overwritten
                         break

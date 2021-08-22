@@ -4,7 +4,7 @@ export default {
      *              from the CE of the Gregorian calendar.
      * @package sunorhc
      */
-    version: '0.2.0',
+    version: '1.0.0',
 
     /**
      * Default TimeZone
@@ -68,4 +68,12 @@ export default {
         second:  { second:  '2-digit' },
         era:     { era:     'long' },
     },
+
+    /**
+     * Whether outputting verbose of Sunorhc behavior into browser console.
+     * This option will be useful for debug.
+     *
+     * @type {boolean} - If false, it prevent to output the console[error, warn] too.
+     */
+    verbose: false,
 }
