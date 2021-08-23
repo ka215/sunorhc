@@ -2,7 +2,7 @@
 
 Sunorhc is a library for handling dates and times for JavaScript. The library wraps a native JavaScript Date object to create its own immutable date and time instance. The instance contains property values of date and time elements and various getters that can be used immediately. It also provides a rich set of instance methods to easily perform date and time calculations and comparisons against a primitive base date and time.
 
-## Occasion
+## Reason for Development
 
 I've been working on a jQuery.Timeline plugin, and I'm planning the next version for VanillaJS.
 However, the native JavaScript Date object is not easy to use, and I have always been dissatisfied with it as follows.
@@ -25,21 +25,112 @@ However, none of the libraries support the timestamp with the epoch time on the 
 Sunorhc is being developed to handle date and time as a core library for Sunorhc.Timeline (under development as of August 2021), the successor to "jQuery.Timeline". The main objective is to be able to map the first year of the A.D. (January 1, 2012, 0:00:0:0) of the time axis as the original period so that the date and time can be easily handled as a single coordinate on the timeline. In addition, instance methods for adding and subtracting dates and getting periods are implemented "with the shortest possible method names". It is also worth mentioning that it has like `date_format()` formatter in PHP.
 Also the setter is intentionally left out of the implementation, since overwriting the primitive value makes it difficult to understand the immutability of the instance itself.
 In developing Sunorhc, we took inspiration from various JavaScript date/time libraries such as "Luxon", "DAYJS", and "Temporal", and enthusiastically incorporated specifications and features that we judged to be superior in each library.
-In addition, Sunorhc has been short-coded to be able to withstand use as a general-purpose date/time library, emphasizing a balance between generalization of implementation functions and readability. As a result, the final build file size after Minify is 24.9kB (as of version 1.0.0), and the Gzip compressed distribution size is further minimized to 6.54kB.
+In addition, Sunorhc has been short-coded to be able to withstand use as a general-purpose date/time library, emphasizing a balance between generalization of implementation functions and readability. As a result, the final build file size after Minify is 26.2kB (as of version 1.0.0), and the Gzip compressed distribution size is further minimized to 6.96kB.
 Sunorhc will be able to be adopted as a front-end date/time library by itself (if you understand and can tolerate that features).
 
-## Memo for development
+## Installations
 
-* Julian calendar: 1 year = 365.25 days = 8,766 hours = 525,960 minutes = 31,557,600 seconds = 31,557,600,000 ms
-* Gregorian calendar: 1 year = 365.2425 days = 8,765.82 hours = 525,949.2 minutes = 31,556,952 seconds = 31,556,952,000 ms
+### NPM
 
-* 2020 year is since CE Epoch (sec): 31,556,952 sec × 2020 year = 63,745,043,040 sec
-* 2020 year is since CE Epoch (ms): 31,556,952,000 ms × 2020 year = 63,745,043,040,000 ms
+```bash
+npm install sunorhc
+```
 
-JavaScript Number.MAX_SAFE_INTEGER (= BigInt): 9,007,199,254,740,991
+If you are using Yarn, it will be `yarn add sunorhc`.
 
-* unit is seconds: 9,007,199,254,740,991 / 31,556,952 = 285,426,781.8622341 therefore, the systemically allowed year: about BCE. or CE.285,426,781
-* unit is milliseconds: 9,007,199,254,740,991 / 31,556,952,000 = 285,426.7818622341 therefore, the systemically allowed year: BCE. or CE. 285,426
+### GitHub
+
+```bash
+git clone https://github.com/ka215/sunorhc.git
+```
+
+The built JS files are stored in the dist directory of the repository.
+
+
+## Usage
+
+Sunorhc can be used by itself by loading the script file after it is built.
+
+### Node
+
+```js
+const Sunorhc = require('sunorhc') 
+
+const NOW_UTC = new Sunorhc()
+```
+
+### HTML5
+
+```html
+<script src="/path/to/sunorhc.min.js"></script>
+<script>
+const NOW_UTC = new Sunorhc()
+</script>
+```
+
+## Supported browsers
+
+The working environment and supported browsers of Sunorhc are as follows.
+
+| Chrome (>= 92) | firefox (>= 91) | Safari (>=13) | Edge (>= 92) | Android | iOS |
+|:---:|:---:|:---:|:---:|:---:|:---:|
+| &check; | &check; | &check; (&ast;) | &check; | &check; | &check; |
+
+**&ast;** Note: "Intl.Locale" object is not supported by native JavaScript in Safari 13, so a separate [Polyfill](https://formatjs.io/docs/polyfills/intl-locale/) is required for formatter language resolution.
+
+In addition, we have not tested the software on legacy browsers such as IE. We do not plan to provide support for these legacy browsers.
+
+## Examples of use
+
+### Constructor
+
+```js
+const NOW_UTC = new Sunorhc()
+
+const DateTime = new Sunorhc(2021, 8, 23, 22, 57, 'local')
+console.log(DataTime.toISOString) //=> 2021-08-23T22:57:00.000+09:00
+
+const DT1 = new Sunorhc(123456789000, { firstArgument: "timestamp" }),
+      DT2 = new Sunorhc(123456789000, { firstArgument: "ceepoch" })
+console.log(
+  DT1.toISOString, //=> 1973-11-29T21:33:09.000Z
+  DT2.toISOString, //=> 0004-11-29T21:33:09.000Z
+)
+```
+
+### Getter
+
+```js
+const NOW_UTC = new Sunorhc()
+
+console.log(
+  NOW_UTC.toISOString, //=> 2021-08-23T14:11:34.249Z
+  NOW_UTC.monthLong, //=> August
+  NOW_UTC.weekdayLong, //=> Monday
+  NOW_UTC.hour, //=> 14
+  NOW_UTC.tzOffsetHM, //=> +00:00
+  NOW_UTC.era, //=> 8 23, 2021 Anno Domini
+)
+```
+
+### Instance Methods
+
+```js
+const DateTime = new Sunorhc()
+
+console.log(
+  DateTime.format('Y-m-d H:i:s'), //=> 2021-08-23 15:21:02
+  DateTime.getLDE('weekday', 'long', 'en-US'), //=> Monday
+  DateTime.modify(+1, 'month').toISOString, //=> 2021-09-23T15:24:20.070Z
+  DateTime.modify(-1, 'day').toString, //=> Sun Aug 22 2021 15:24:20 GMT+0000 (UTC)
+  DateTime.interval('2021-10-20', 'day'), //=> 58
+  DateTime.getISO('ordinal'), //=> 2021-234
+)
+```
+
+## Documentation
+
+Sorry, currently writing.
 
 ## References & Respect
 

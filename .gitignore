@@ -5,3 +5,5 @@ architecture.md
 *.orig
 *.png
 *.svg
+
+tests/exam*.*
