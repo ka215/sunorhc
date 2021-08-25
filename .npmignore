@@ -1,4 +1,7 @@
+.circleci
+.git
 node_modules
+tests
 
 architecture.md
 *.log
@@ -6,5 +9,4 @@ architecture.md
 *.png
 *.svg
 
-tests
-.circleci
+jest.config.js

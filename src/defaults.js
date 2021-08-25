@@ -4,7 +4,7 @@ export default {
      *              from the CE of the Gregorian calendar.
      * @package sunorhc
      */
-    version: '1.0.0',
+    version: '1.0.2',
 
     /**
      * Default TimeZone
