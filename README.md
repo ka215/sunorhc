@@ -1,6 +1,26 @@
-# Sunorhc
+<h1 align="center">
+  <br>
+  Sunorhc
+  <br>
+</h1>
 
 Sunorhc is a library for handling dates and times for JavaScript. The library wraps a native JavaScript Date object to create its own immutable date and time instance. The instance contains property values of date and time elements and various getters that can be used immediately. It also provides a rich set of instance methods to easily perform date and time calculations and comparisons against a primitive base date and time.
+
+<p align="center">
+  <img alt="GitHub package.json version" src="https://img.shields.io/github/package-json/v/ka215/sunorhc">
+  <img alt="CircleCI" src="https://img.shields.io/circleci/build/github/ka215/sunorhc/main">
+  <img alt="npm downloads" src="https://img.shields.io/npm/dt/sunorhc">
+  <img alt="npm bundle size" src="https://img.shields.io/bundlephobia/min/sunorhc?label=bundle%20size">
+  <img alt="GitHub" src="https://img.shields.io/github/license/ka215/sunorhc">
+</p>
+
+<p align="center">
+  <a href="#installations">Installations</a> &middot;
+  <a href="#usage">Usage</a> &middot;
+  <a href="#supported-browsers">Supported browsers</a> &middot;
+  <a href="#examples-of-use">Examples of use</a> &middot;
+  <a href="#documentation">Documentation</a>
+</p>
 
 ## Reason for Development
 
@@ -59,6 +79,14 @@ const Sunorhc = require('sunorhc')
 const NOW_UTC = new Sunorhc()
 ```
 
+### ES6
+
+```js
+import Sunorhc from 'sunorhc'
+
+const NOW_ZONED = new Sunorhc('local')
+```
+
 ### HTML5
 
 ```html
@@ -66,6 +94,12 @@ const NOW_UTC = new Sunorhc()
 <script>
 const NOW_UTC = new Sunorhc()
 </script>
+```
+
+It is also possible to load via CDN.
+
+```html
+<script src="https://unpkg.com/sunorhc@latest/dist/sunorhc.min.js"></script>
 ```
 
 ## Supported browsers
@@ -130,7 +164,12 @@ console.log(
 
 ## Documentation
 
-Sorry, currently writing.
+Sorry, currently writing the manual document.
+
+And other documents.
+
+* [Unit test results](https://ka2.org/sunorhc/test-report.html)
+* Unit test results by time zone
 
 ## References & Respect
 
@@ -148,4 +187,4 @@ Great respect and acknowledgement to the developers and the community!
 
 ## License
 
-Code released under the MIT License.
+Code released under the [MIT License](https://github.com/ka215/sunorhc/blob/main/LICENSE).
